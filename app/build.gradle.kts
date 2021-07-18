@@ -62,10 +62,6 @@ android {
     }
 
     buildTypes {
-        named("debug") {
-            versionNameSuffix = "-${getCommitCount()}"
-            applicationIdSuffix = ".debug"
-        }
         create("releaseTest") {
             applicationIdSuffix = ".rt"
             //isMinifyEnabled = true
