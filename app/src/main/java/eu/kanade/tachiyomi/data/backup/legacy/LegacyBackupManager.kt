@@ -13,7 +13,7 @@ import eu.kanade.tachiyomi.data.backup.legacy.serializer.ChapterTypeSerializer
 import eu.kanade.tachiyomi.data.backup.legacy.serializer.HistoryTypeSerializer
 import eu.kanade.tachiyomi.data.backup.legacy.serializer.MangaImplTypeSerializer
 import eu.kanade.tachiyomi.data.backup.legacy.serializer.MangaTypeSerializer
-import eu.kanade.tachiyomi.data.backup.legacy.serializer.MergedMangaTypeSerializer
+import eu.kanade.tachiyomi.data.backup.legacy.serializer.MergedMangaReferenceTypeSerializer
 import eu.kanade.tachiyomi.data.backup.legacy.serializer.TrackImplTypeSerializer
 import eu.kanade.tachiyomi.data.backup.legacy.serializer.TrackTypeSerializer
 import eu.kanade.tachiyomi.data.database.models.Category
@@ -56,7 +56,7 @@ class LegacyBackupManager(context: Context, version: Int = CURRENT_VERSION) : Ab
                 contextual(TrackImplTypeSerializer)
                 contextual(HistoryTypeSerializer)
                 // SY -->
-                contextual(MergedMangaTypeSerializer)
+                contextual(MergedMangaReferenceTypeSerializer)
                 // SY <--
             }
         }

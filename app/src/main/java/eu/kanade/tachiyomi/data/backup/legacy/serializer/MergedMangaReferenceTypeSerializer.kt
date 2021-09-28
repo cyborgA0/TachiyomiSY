@@ -19,7 +19,7 @@ import kotlinx.serialization.json.long
 /**
  * JSON Serializer used to write / read [MergedMangaReference] to / from json
  */
-object MergedMangaTypeSerializer : KSerializer<MergedMangaReference> {
+object MergedMangaReferenceTypeSerializer : KSerializer<MergedMangaReference> {
     override val descriptor: SerialDescriptor = buildClassSerialDescriptor("Manga")
 
     override fun serialize(encoder: Encoder, value: MergedMangaReference) {
