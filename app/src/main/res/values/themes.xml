@@ -97,7 +97,6 @@
         <item name="colorFilterActive">@color/filterColorLight</item>
     </style>
 
-<<<<<<< HEAD
     <!--==============-->
     <!-- Light Themes -->
     <!--==============-->
@@ -111,12 +110,6 @@
     </style>
 
     <!--== Light theme ==-->
-=======
-    <!--===========-->
-    <!-- Main Theme-->
-    <!--===========-->
-    <style name="Base.Theme.Tachiyomi.Light" parent="Theme.Base" />
->>>>>>> parent of b4a226157 (Drop support for Android 5.x)
     <style name="Theme.Tachiyomi.Light" parent="Base.Theme.Tachiyomi.Light" />
 
     <!--== Light Blue theme ==-->

@@ -241,11 +241,9 @@ object EXHMigrations {
                             putInt("pref_rotation_type_key", 1)
                         }
                     }
-                    // Disable update check for Android 5.x users
-<<<<<<< HEAD
-                    // if (BuildConfig.INCLUDE_UPDATER && Build.VERSION.SDK_INT under Build.VERSION_CODES.M) {
-                    //   UpdaterJob.cancelTask(context)
-                    // }
+                    if (BuildConfig.INCLUDE_UPDATER && Build.VERSION.SDK_INT under Build.VERSION_CODES.M) {
+                        UpdaterJob.cancelTask(context)
+                    }
                 }
                 if (oldVersion under 17) {
                     // Migrate Rotation and Viewer values to default values for viewer_flags
@@ -287,10 +285,6 @@ object EXHMigrations {
                     if (updateInterval == 1 || updateInterval == 2) {
                         preferences.libraryUpdateInterval().set(3)
                         LibraryUpdateJob.setupTask(context, 3)
-=======
-                    if (BuildConfig.INCLUDE_UPDATER && Build.VERSION.SDK_INT under Build.VERSION_CODES.M) {
-                        UpdaterJob.cancelTask(context)
->>>>>>> parent of b4a226157 (Drop support for Android 5.x)
                     }
                 }
 
