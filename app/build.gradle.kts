@@ -60,8 +60,8 @@ android {
         }
         create("releaseTest") {
             applicationIdSuffix = ".rt"
-            //isMinifyEnabled = true
-            //isShrinkResources = true
+            // isMinifyEnabled = true
+            // isShrinkResources = true
             setProguardFiles(listOf(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"))
         }
         named("release") {
@@ -216,7 +216,7 @@ dependencies {
     implementation("com.jakewharton.timber:timber:4.7.1")
 
     // Crash reports
-    //implementation("ch.acra:acra-http:5.7.0")
+    // implementation("ch.acra:acra-http:5.7.0")
 
     // Sort
     implementation("com.github.gpanther:java-nat-sort:natural-comparator-1.1")
@@ -281,7 +281,7 @@ dependencies {
     implementation("com.github.gabrielemariotti.changeloglib:changelog:2.1.0")
 
     // Text distance (EH)
-    implementation ("info.debatty:java-string-similarity:2.0.0")
+    implementation("info.debatty:java-string-similarity:2.0.0")
 
     // Firebase (EH)
     implementation("com.google.firebase:firebase-analytics-ktx:19.0.0")
@@ -328,7 +328,6 @@ tasks {
     }
 }
 
-
 buildscript {
     repositories {
         mavenCentral()
@@ -337,7 +336,6 @@ buildscript {
         classpath(kotlin("gradle-plugin", version = BuildPluginsVersion.KOTLIN))
     }
 }
-
 
 // Git is needed in your system PATH for these commands to work.
 // If it's not installed, you can return a random value as a workaround
