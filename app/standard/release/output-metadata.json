@@ -10,7 +10,7 @@
     {
       "type": "SINGLE",
       "filters": [],
-      "versionCode": 19,
+      "versionCode": 20,
       "versionName": "1.7.0",
       "outputFile": "app-standard-release.apk"
     }
