@@ -1,6 +1,7 @@
 package exh
 
 import android.content.Context
+import android.os.Build
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import com.pushtorefresh.storio.sqlite.queries.DeleteQuery
@@ -41,6 +42,7 @@ import exh.source.MERGED_SOURCE_ID
 import exh.source.PERV_EDEN_EN_SOURCE_ID
 import exh.source.PERV_EDEN_IT_SOURCE_ID
 import exh.source.TSUMINO_SOURCE_ID
+import exh.util.over
 import exh.util.under
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -73,7 +75,7 @@ object EXHMigrations {
                 // Fresh install
                 if (oldVersion == 0) {
                     // Set up default background tasks
-                    if (BuildConfig.INCLUDE_UPDATER) {
+                    if (BuildConfig.INCLUDE_UPDATER && Build.VERSION.SDK_INT over Build.VERSION_CODES.LOLLIPOP_MR1) {
                         UpdaterJob.setupTask(context)
                     }
                     ExtensionUpdateJob.setupTask(context)
@@ -243,10 +245,9 @@ object EXHMigrations {
                             putInt("pref_rotation_type_key", 1)
                         }
                     }
-                    // Disable update check for Android 5.x users
-                    // if (BuildConfig.INCLUDE_UPDATER && Build.VERSION.SDK_INT under Build.VERSION_CODES.M) {
-                    //   UpdaterJob.cancelTask(context)
-                    // }
+                    if (BuildConfig.INCLUDE_UPDATER && Build.VERSION.SDK_INT under Build.VERSION_CODES.M) {
+                        UpdaterJob.cancelTask(context)
+                    }
                 }
                 if (oldVersion under 17) {
                     // Migrate Rotation and Viewer values to default values for viewer_flags

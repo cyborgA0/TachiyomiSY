@@ -32,10 +32,11 @@ class ReaderTransitionView @JvmOverloads constructor(context: Context, attrs: At
 
         missingChapterWarning(transition)
 
+        @Suppress("DEPRECATION")
         val color = when (Injekt.get<PreferencesHelper>().readerTheme().get()) {
-            0 -> context.getColor(android.R.color.black)
-            3 -> context.getColor(automaticTextColor())
-            else -> context.getColor(android.R.color.white)
+            0 -> context.resources.getColor(android.R.color.black)
+            3 -> context.resources.getColor(automaticTextColor())
+            else -> context.resources.getColor(android.R.color.white)
         }
         listOf(binding.upperText, binding.warningText, binding.lowerText).forEach {
             it.setTextColor(color)
