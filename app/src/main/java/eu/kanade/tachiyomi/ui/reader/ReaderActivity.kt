@@ -510,9 +510,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         }
 
         window.statusBarColor = toolbarColor
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            window.navigationBarColor = toolbarColor
-        }
+        window.navigationBarColor = toolbarColor
         // SY -->
         binding.toolbar.background.alpha = 0
         (binding.header.background as MaterialShapeDrawable).fillColor = ColorStateList.valueOf(toolbarColor)
