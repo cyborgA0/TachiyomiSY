@@ -52,7 +52,7 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import kotlin.math.roundToInt
 
-private const val TABLET_UI_MIN_SCREEN_WIDTH_DP = 720
+private const val TABLET_UI_MIN_SCREEN_WIDTH_DP = 600
 
 /**
  * Display a toast in this context.
@@ -106,7 +106,7 @@ fun Context.copyToClipboard(label: String, content: String) {
  */
 fun Context.notificationBuilder(channelId: String, block: (NotificationCompat.Builder.() -> Unit)? = null): NotificationCompat.Builder {
     val builder = NotificationCompat.Builder(this, channelId)
-        .setColor(getColor(R.color.accent_blue))
+        .setColor(getResources().getColor(R.color.accent_blue))
     if (block != null) {
         builder.block()
     }
@@ -156,7 +156,7 @@ fun Context.hasPermission(permission: String) = ContextCompat.checkSelfPermissio
     val tv = TypedValue()
     return if (this.theme.resolveAttribute(attr, tv, true)) {
         if (tv.resourceId != 0) {
-            getColor(tv.resourceId)
+            getResources().getColor(tv.resourceId)
         } else {
             tv.data
         }
@@ -306,7 +306,7 @@ fun Context.createFileInCacheDir(name: String): File {
 }
 
 /**
- * We consider anything with a width of >= 720dp as a tablet, i.e. with layouts in layout-sw720dp.
+ * We consider anything with a width of >= 600dp as a tablet, i.e. with layouts in layout-sw600dp.
  */
 fun Context.isTablet(): Boolean {
     return resources.configuration.smallestScreenWidthDp >= TABLET_UI_MIN_SCREEN_WIDTH_DP
@@ -368,7 +368,7 @@ fun Context.createReaderThemeContext(): Context {
 }
 
 fun Context.isOnline(): Boolean {
-    val networkCapabilities = connectivityManager.activeNetwork ?: return false
+    val networkCapabilities = connectivityManager.activeNetworkInfo ?: return false
     val actNw = connectivityManager.getNetworkCapabilities(networkCapabilities) ?: return false
     val maxTransport = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 -> NetworkCapabilities.TRANSPORT_LOWPAN
