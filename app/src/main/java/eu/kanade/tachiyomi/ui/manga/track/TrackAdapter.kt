@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import eu.kanade.tachiyomi.databinding.TrackItemBinding
 import eu.kanade.tachiyomi.util.view.applyElevationOverlay
+import uy.kohesive.injekt.api.get
 
 class TrackAdapter(listener: OnClickListener) : RecyclerView.Adapter<TrackHolder>() {
 
@@ -39,16 +40,13 @@ class TrackAdapter(listener: OnClickListener) : RecyclerView.Adapter<TrackHolder
     }
 
     interface OnClickListener {
-        fun onOpenInBrowserClick(position: Int)
+        fun onLogoClick(position: Int)
         fun onSetClick(position: Int)
         fun onTitleLongClick(position: Int)
         fun onStatusClick(position: Int)
         fun onChaptersClick(position: Int)
         fun onScoreClick(position: Int)
-        fun onStartDateEditClick(position: Int)
-        fun onStartDateRemoveClick(position: Int)
-        fun onFinishDateEditClick(position: Int)
-        fun onFinishDateRemoveClick(position: Int)
-        fun onRemoveItemClick(position: Int)
+        fun onStartDateClick(position: Int)
+        fun onFinishDateClick(position: Int)
     }
 }

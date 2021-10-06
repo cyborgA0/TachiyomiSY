@@ -2,11 +2,11 @@ package eu.kanade.tachiyomi.ui.category.sources
 
 import android.app.Dialog
 import android.os.Bundle
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.input.input
 import com.bluelinelabs.conductor.Controller
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.base.controller.DialogController
-import eu.kanade.tachiyomi.widget.materialdialogs.setTextInput
 
 /**
  * Dialog to rename an existing category of the library.
@@ -34,17 +34,16 @@ class SourceCategoryRenameDialog<T>(bundle: Bundle? = null) : DialogController(b
      * @return a new dialog instance.
      */
     override fun onCreateDialog(savedViewState: Bundle?): Dialog {
-        return MaterialAlertDialogBuilder(activity!!)
-            .setTitle(R.string.action_rename_category)
-            .setTextInput(
+        return MaterialDialog(activity!!)
+            .title(R.string.action_rename_category)
+            .negativeButton(android.R.string.cancel)
+            .input(
                 hint = resources?.getString(R.string.name),
                 prefill = currentName
-            ) { input ->
-                currentName = input
+            ) { _, input ->
+                currentName = input.toString()
             }
-            .setPositiveButton(android.R.string.ok) { _, _ -> onPositive() }
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
+            .positiveButton(android.R.string.ok) { onPositive() }
     }
 
     /**

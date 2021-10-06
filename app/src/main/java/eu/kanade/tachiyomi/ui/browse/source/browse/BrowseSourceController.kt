@@ -13,7 +13,9 @@ import androidx.core.view.updatePadding
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.input.input
+import com.afollestad.materialdialogs.list.listItems
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
 import com.google.android.material.snackbar.Snackbar
 import com.tfcporciuncula.flow.Preference
@@ -54,7 +56,6 @@ import eu.kanade.tachiyomi.util.view.shrinkOnScroll
 import eu.kanade.tachiyomi.util.view.snack
 import eu.kanade.tachiyomi.widget.AutofitRecyclerView
 import eu.kanade.tachiyomi.widget.EmptyView
-import eu.kanade.tachiyomi.widget.materialdialogs.setTextInput
 import exh.log.xLogW
 import exh.savedsearches.EXHSavedSearch
 import exh.source.getMainSource
@@ -206,19 +207,15 @@ open class BrowseSourceController(bundle: Bundle) :
             // EXH -->
             onSaveClicked = {
                 filterSheet?.context?.let {
-                    var searchName = ""
-                    MaterialAlertDialogBuilder(it)
-                        .setTitle(R.string.save_search)
-                        .setTextInput(hint = it.getString(R.string.save_search_hint)) { input ->
-                            searchName = input
-                        }
-                        .setPositiveButton(R.string.action_save) { _, _ ->
+                    MaterialDialog(it)
+                        .title(R.string.save_search)
+                        .input(hintRes = R.string.save_search_hint) { _, searchName ->
                             val oldSavedSearches = presenter.loadSearches()
                             if (searchName.isNotBlank() &&
                                 oldSavedSearches.size < MAX_SAVED_SEARCHES
                             ) {
                                 val newSearches = oldSavedSearches + EXHSavedSearch(
-                                    searchName.trim(),
+                                    searchName.toString().trim(),
                                     presenter.query,
                                     presenter.sourceFilters
                                 )
@@ -226,7 +223,10 @@ open class BrowseSourceController(bundle: Bundle) :
                                 filterSheet?.setSavedSearches(newSearches)
                             }
                         }
-                        .setNegativeButton(R.string.action_cancel, null)
+                        .positiveButton(R.string.action_save)
+                        .negativeButton(R.string.action_cancel)
+                        .cancelable(true)
+                        .cancelOnTouchOutside(true)
                         .show()
                 }
             },
@@ -237,9 +237,11 @@ open class BrowseSourceController(bundle: Bundle) :
 
                 if (search == null) {
                     filterSheet?.context?.let {
-                        MaterialAlertDialogBuilder(it)
-                            .setTitle(R.string.save_search_failed_to_load)
-                            .setMessage(R.string.save_search_failed_to_load_message)
+                        MaterialDialog(it)
+                            .title(R.string.save_search_failed_to_load)
+                            .message(R.string.save_search_failed_to_load_message)
+                            .cancelable(true)
+                            .cancelOnTouchOutside(true)
                             .show()
                     }
                     return@cb
@@ -267,26 +269,30 @@ open class BrowseSourceController(bundle: Bundle) :
 
                 if (search == null || search.name != name) {
                     filterSheet?.context?.let {
-                        MaterialAlertDialogBuilder(it)
-                            .setTitle(R.string.save_search_failed_to_delete)
-                            .setMessage(R.string.save_search_failed_to_delete_message)
+                        MaterialDialog(it)
+                            .title(R.string.save_search_failed_to_delete)
+                            .message(R.string.save_search_failed_to_delete_message)
+                            .cancelable(true)
+                            .cancelOnTouchOutside(true)
                             .show()
                     }
                     return@cb
                 }
 
                 filterSheet?.context?.let {
-                    MaterialAlertDialogBuilder(it)
-                        .setTitle(R.string.save_search_delete)
-                        .setMessage(it.getString(R.string.save_search_delete_message, search.name))
-                        .setPositiveButton(R.string.action_cancel, null)
-                        .setNegativeButton(android.R.string.ok) { _, _ ->
+                    MaterialDialog(it)
+                        .title(R.string.save_search_delete)
+                        .message(text = it.getString(R.string.save_search_delete_message, search.name))
+                        .positiveButton(R.string.action_cancel)
+                        .negativeButton(android.R.string.ok) {
                             val newSearches = savedSearches.filterIndexed { index, _ ->
                                 index != indexToDelete
                             }
                             presenter.saveSearches(newSearches)
                             filterSheet?.setSavedSearches(newSearches)
                         }
+                        .cancelable(true)
+                        .cancelOnTouchOutside(true)
                         .show()
                 }
             }
@@ -763,9 +769,11 @@ open class BrowseSourceController(bundle: Bundle) :
         val manga = (adapter?.getItem(position) as? SourceItem?)?.manga ?: return
 
         if (manga.favorite) {
-            MaterialAlertDialogBuilder(activity)
-                .setTitle(manga.title)
-                .setItems(arrayOf(activity.getString(R.string.remove_from_library))) { _, which ->
+            MaterialDialog(activity)
+                .listItems(
+                    items = listOf(activity.getString(R.string.remove_from_library)),
+                    waitForPositiveButton = false
+                ) { _, which, _ ->
                     when (which) {
                         0 -> {
                             presenter.changeMangaFavorite(manga)

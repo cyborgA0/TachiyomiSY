@@ -8,11 +8,12 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.core.net.toUri
 import androidx.core.text.HtmlCompat
 import androidx.preference.PreferenceScreen
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.checkbox.checkBoxPrompt
+import com.afollestad.materialdialogs.list.listItemsMultiChoice
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.database.DatabaseHelper
@@ -338,25 +339,16 @@ class SettingsAdvancedController : SettingsController() {
     // SY -->
     class CleanupDownloadsDialogController : DialogController() {
         override fun onCreateDialog(savedViewState: Bundle?): Dialog {
-            val options = activity!!.resources.getStringArray(R.array.clean_up_downloads)
-            val selected = options.map { true }.toBooleanArray()
-            return MaterialAlertDialogBuilder(activity!!)
-                .setTitle(R.string.clean_up_downloaded_chapters)
-                .setMultiChoiceItems(options, selected) { dialog, which, checked ->
-                    if (which == 0) {
-                        (dialog as AlertDialog).listView.setItemChecked(which, true)
-                    } else {
-                        selected[which] = checked
+            return MaterialDialog(activity!!).show {
+                title(R.string.clean_up_downloaded_chapters)
+                    .listItemsMultiChoice(R.array.clean_up_downloads, disabledIndices = intArrayOf(0), initialSelection = intArrayOf(0, 1, 2)) { _, selections, _ ->
+                        val deleteRead = selections.contains(1)
+                        val deleteNonFavorite = selections.contains(2)
+                        (targetController as? SettingsAdvancedController)?.cleanupDownloads(deleteRead, deleteNonFavorite)
                     }
-                }
-                .setPositiveButton(android.R.string.ok) { _, _ ->
-                    (targetController as? SettingsAdvancedController)?.cleanupDownloads(
-                        selected[1],
-                        selected[2]
-                    )
-                }
-                .setNegativeButton(android.R.string.cancel, null)
-                .create()
+                positiveButton(android.R.string.ok)
+                negativeButton(android.R.string.cancel)
+            }
         }
     }
 
@@ -419,23 +411,22 @@ class SettingsAdvancedController : SettingsController() {
     }
 
     class ClearDatabaseDialogController : DialogController() {
+        // SY -->
+        var keepReadManga = false
+        // SY <--
+
         override fun onCreateDialog(savedViewState: Bundle?): Dialog {
-            val item = arrayOf(
-                activity!!.getString(R.string.clear_db_exclude_read)
-            )
-            val selected = booleanArrayOf(true)
-            return MaterialAlertDialogBuilder(activity!!)
-                .setMessage(R.string.clear_database_confirmation)
+            return MaterialDialog(activity!!)
+                .message(R.string.clear_database_confirmation)
                 // SY -->
-                .setMultiChoiceItems(item, selected) { _, _, isChecked ->
-                    selected[0] = isChecked
+                .checkBoxPrompt(R.string.clear_db_exclude_read) {
+                    keepReadManga = it
                 }
                 // SY <--
-                .setPositiveButton(android.R.string.ok) { _, _ ->
-                    (targetController as? SettingsAdvancedController)?.clearDatabase(selected.first())
+                .positiveButton(android.R.string.ok) {
+                    (targetController as? SettingsAdvancedController)?.clearDatabase(/* SY --> */keepReadManga/* SY <-- */)
                 }
-                .setNegativeButton(android.R.string.cancel, null)
-                .create()
+                .negativeButton(android.R.string.cancel)
         }
     }
 

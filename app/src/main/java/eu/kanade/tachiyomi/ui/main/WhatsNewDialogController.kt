@@ -4,7 +4,8 @@ import android.app.Dialog
 import android.content.Context
 import android.os.Bundle
 import android.util.AttributeSet
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.customview.customView
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.base.controller.DialogController
@@ -17,11 +18,10 @@ class WhatsNewDialogController : DialogController() {
     override fun onCreateDialog(savedViewState: Bundle?): Dialog {
         val activity = activity!!
         val view = WhatsNewRecyclerView(activity)
-        return MaterialAlertDialogBuilder(activity)
-            .setTitle(if (BuildConfig.DEBUG /* SY --> */ || syDebugVersion != "0" /* SY <-- */) R.string.notices else R.string.whats_new)
-            .setView(view)
-            .setPositiveButton(android.R.string.cancel, null)
-            .create()
+        return MaterialDialog(activity)
+            .title(res = if (BuildConfig.DEBUG /* SY --> */ || syDebugVersion != "0" /* SY <-- */) R.string.notices else R.string.whats_new)
+            .customView(view = view)
+            .positiveButton(android.R.string.cancel)
     }
 
     class WhatsNewRecyclerView(context: Context) : ChangeLogRecyclerView(context) {

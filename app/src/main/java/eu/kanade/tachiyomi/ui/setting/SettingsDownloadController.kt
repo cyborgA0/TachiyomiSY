@@ -10,7 +10,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.text.buildSpannedString
 import androidx.preference.PreferenceScreen
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.list.listItemsMultiChoice
+import com.afollestad.materialdialogs.list.listItemsSingleChoice
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.DatabaseHelper
@@ -27,8 +29,8 @@ import eu.kanade.tachiyomi.util.preference.preferenceCategory
 import eu.kanade.tachiyomi.util.preference.switchPreference
 import eu.kanade.tachiyomi.util.preference.titleRes
 import eu.kanade.tachiyomi.util.system.toast
-import eu.kanade.tachiyomi.widget.materialdialogs.QuadStateTextView
-import eu.kanade.tachiyomi.widget.materialdialogs.setQuadStateMultiChoiceItems
+import eu.kanade.tachiyomi.widget.materialdialogs.QuadStateCheckBox
+import eu.kanade.tachiyomi.widget.materialdialogs.listItemsQuadStateMultiChoice
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import uy.kohesive.injekt.Injekt
@@ -245,22 +247,20 @@ class SettingsDownloadController : SettingsController() {
             val activity = activity!!
             val currentDir = preferences.downloadsDirectory().get()
             val externalDirs = (getExternalDirs() + File(activity.getString(R.string.custom_dir))).map(File::toString)
-            var selectedIndex = externalDirs.indexOfFirst { it in currentDir }
+            val selectedIndex = externalDirs.indexOfFirst { it in currentDir }
 
-            return MaterialAlertDialogBuilder(activity)
-                .setTitle(R.string.pref_download_directory)
-                .setSingleChoiceItems(externalDirs.toTypedArray(), selectedIndex) { _, which ->
-                    selectedIndex = which
-                }
-                .setPositiveButton(android.R.string.ok) { _, _ ->
+            return MaterialDialog(activity)
+                .listItemsSingleChoice(
+                    items = externalDirs,
+                    initialSelection = selectedIndex
+                ) { _, position, text ->
                     val target = targetController as? SettingsDownloadController
-                    if (selectedIndex == externalDirs.lastIndex) {
+                    if (position == externalDirs.lastIndex) {
                         target?.customDirectorySelected()
                     } else {
-                        target?.predefinedDirectorySelected(externalDirs[selectedIndex])
+                        target?.predefinedDirectorySelected(text.toString())
                     }
                 }
-                .create()
         }
 
         private fun getExternalDirs(): List<File> {
@@ -283,33 +283,30 @@ class SettingsDownloadController : SettingsController() {
             val categories = listOf(Category.createDefault()) + dbCategories
 
             val items = categories.map { it.name }
-            var selected = categories
+            val preselected = categories
                 .map {
                     when (it.id.toString()) {
-                        in preferences.downloadNewCategories().get() -> QuadStateTextView.State.CHECKED.ordinal
-                        in preferences.downloadNewCategoriesExclude().get() -> QuadStateTextView.State.INVERSED.ordinal
-                        else -> QuadStateTextView.State.UNCHECKED.ordinal
+                        in preferences.downloadNewCategories().get() -> QuadStateCheckBox.State.CHECKED.ordinal
+                        in preferences.downloadNewCategoriesExclude().get() -> QuadStateCheckBox.State.INVERSED.ordinal
+                        else -> QuadStateCheckBox.State.UNCHECKED.ordinal
                     }
                 }
                 .toIntArray()
 
-            return MaterialAlertDialogBuilder(activity!!)
-                .setTitle(R.string.categories)
-                .setMessage(R.string.pref_download_new_categories_details)
-                .setQuadStateMultiChoiceItems(
+            return MaterialDialog(activity!!)
+                .title(R.string.categories)
+                .message(R.string.pref_download_new_categories_details)
+                .listItemsQuadStateMultiChoice(
                     items = items,
-                    initialSelected = selected
+                    initialSelected = preselected
                 ) { selections ->
-                    selected = selections
-                }
-                .setPositiveButton(android.R.string.ok) { _, _ ->
-                    val included = selected
-                        .mapIndexed { index, value -> if (value == QuadStateTextView.State.CHECKED.ordinal) index else null }
+                    val included = selections
+                        .mapIndexed { index, value -> if (value == QuadStateCheckBox.State.CHECKED.ordinal) index else null }
                         .filterNotNull()
                         .map { categories[it].id.toString() }
                         .toSet()
-                    val excluded = selected
-                        .mapIndexed { index, value -> if (value == QuadStateTextView.State.INVERSED.ordinal) index else null }
+                    val excluded = selections
+                        .mapIndexed { index, value -> if (value == QuadStateCheckBox.State.INVERSED.ordinal) index else null }
                         .filterNotNull()
                         .map { categories[it].id.toString() }
                         .toSet()
@@ -317,8 +314,8 @@ class SettingsDownloadController : SettingsController() {
                     preferences.downloadNewCategories().set(included)
                     preferences.downloadNewCategoriesExclude().set(excluded)
                 }
-                .setNegativeButton(android.R.string.cancel, null)
-                .create()
+                .positiveButton(android.R.string.ok)
+                .negativeButton(android.R.string.cancel)
         }
     }
 
@@ -331,35 +328,29 @@ class SettingsDownloadController : SettingsController() {
             val dbCategories = db.getCategories().executeAsBlocking()
             val categories = listOf(Category.createDefault()) + dbCategories
 
-            val items = categories.map { it.name }.toTypedArray()
-            val selection = categories
-                .mapNotNull { category ->
-                    category.id in preferences.dontDeleteFromCategories().get().map { it.toInt() }
+            val items = categories.map { it.name }
+            val preselected = categories
+                .mapIndexedNotNull { index, category ->
+                    if (category.id in preferences.dontDeleteFromCategories().get().map { it.toInt() }) {
+                        index
+                    } else null
                 }
-                .toBooleanArray()
+                .toIntArray()
 
-            return MaterialAlertDialogBuilder(activity!!)
-                .setTitle(R.string.categories)
-                .setMultiChoiceItems(
-                    items,
-                    selection
-                ) { _, which, selected ->
-                    selection[which] = selected
-                }
-                .setPositiveButton(android.R.string.ok) { _, _ ->
-                    val included = selection
-                        .mapIndexed { index, selected ->
-                            if (selected) {
-                                categories[index].id.toString()
-                            } else null
-                        }
-                        .filterNotNull()
+            return MaterialDialog(activity!!)
+                .title(R.string.categories)
+                .listItemsMultiChoice(
+                    items = items,
+                    initialSelection = preselected
+                ) { _: MaterialDialog, selections: IntArray, _: List<CharSequence> ->
+                    val included = selections
+                        .map { categories[it].id.toString() }
                         .toSet()
 
                     preferences.dontDeleteFromCategories().set(included)
                 }
-                .setNegativeButton(android.R.string.cancel, null)
-                .create()
+                .positiveButton(android.R.string.ok)
+                .negativeButton(android.R.string.cancel)
         }
     }
 

@@ -2,11 +2,11 @@ package eu.kanade.tachiyomi.ui.category.repos
 
 import android.app.Dialog
 import android.os.Bundle
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.input.input
 import com.bluelinelabs.conductor.Controller
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.base.controller.DialogController
-import eu.kanade.tachiyomi.widget.materialdialogs.setTextInput
 
 /**
  * Dialog to create a new repo for the library.
@@ -30,20 +30,19 @@ class RepoCreateDialog<T>(bundle: Bundle? = null) : DialogController(bundle)
      * @return a new dialog instance.
      */
     override fun onCreateDialog(savedViewState: Bundle?): Dialog {
-        return MaterialAlertDialogBuilder(activity!!)
-            .setTitle(R.string.action_add_repo)
-            .setMessage(R.string.action_add_repo_message)
-            .setTextInput(
+        return MaterialDialog(activity!!)
+            .title(R.string.action_add_repo)
+            .message(R.string.action_add_repo_message)
+            .negativeButton(android.R.string.cancel)
+            .input(
                 hint = resources?.getString(R.string.name),
                 prefill = currentName
-            ) { input ->
-                currentName = input
+            ) { _, input ->
+                currentName = input.toString()
             }
-            .setPositiveButton(android.R.string.ok) { _, _ ->
+            .positiveButton(android.R.string.ok) {
                 (targetController as? Listener)?.createRepo(currentName)
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
     }
 
     interface Listener {

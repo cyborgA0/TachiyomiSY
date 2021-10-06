@@ -3,7 +3,7 @@ package exh.ui.batchadd
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.TextView
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.afollestad.materialdialogs.MaterialDialog
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.databinding.EhFragmentBatchAddBinding
 import eu.kanade.tachiyomi.ui.base.controller.NucleusController
@@ -143,10 +143,12 @@ class BatchAddController : NucleusController<EhFragmentBatchAddBinding, BatchAdd
 
     private fun noGalleriesSpecified() {
         activity?.let {
-            MaterialAlertDialogBuilder(it)
-                .setTitle(R.string.batch_add_no_valid_galleries)
-                .setMessage(R.string.batch_add_no_valid_galleries_message)
-                .setPositiveButton(android.R.string.ok, null)
+            MaterialDialog(it)
+                .title(R.string.batch_add_no_valid_galleries)
+                .message(R.string.batch_add_no_valid_galleries_message)
+                .positiveButton(android.R.string.ok) { materialDialog -> materialDialog.dismiss() }
+                .cancelable(true)
+                .cancelOnTouchOutside(true)
                 .show()
         }
     }

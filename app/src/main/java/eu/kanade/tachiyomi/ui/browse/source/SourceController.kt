@@ -11,9 +11,10 @@ import android.view.MenuItem
 import android.view.View
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.list.listItems
 import com.bluelinelabs.conductor.ControllerChangeHandler
 import com.bluelinelabs.conductor.ControllerChangeType
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dev.chrisbanes.insetter.applyInsetter
 import eu.davidea.flexibleadapter.FlexibleAdapter
 import eu.davidea.flexibleadapter.items.IFlexible
@@ -239,8 +240,7 @@ class SourceController(bundle: Bundle? = null) :
     }
 
     private fun addToCategories(source: Source) {
-        val categories = preferences.sourcesTabCategories().get().sortedBy { it.lowercase() }
-            .toTypedArray()
+        val categories = preferences.sourcesTabCategories().get().toList().sortedBy { it.lowercase() }
 
         if (categories.isEmpty()) {
             applicationContext?.toast(R.string.no_source_categories)
@@ -251,18 +251,16 @@ class SourceController(bundle: Bundle? = null) :
         val sources = preferenceSources.map { it.split("|")[0] }
 
         if (source.id.toString() in sources) {
-            val sourceCategories = preferenceSources
-                .map { item -> item.split("|").let { it.component1() to it.component2() } }
-                .filter { it.first == source.id.toString() }
-                .map { it.second }
+            val preferenceSourcePairs = preferenceSources.map { it.split("|") }.filter { it[0] == source.id.toString() }.map { it[0] to it[1] }.toMutableList()
 
-            val selection = categories.map { it in sourceCategories }
-                .toBooleanArray()
+            val preselected = preferenceSourcePairs.map { category ->
+                categories.indexOf(category.second)
+            }.toTypedArray()
 
-            ChangeSourceCategoriesDialog(this, source, categories, selection)
+            ChangeSourceCategoriesDialog(this, source, categories, preselected)
                 .showDialog(router)
         } else {
-            ChangeSourceCategoriesDialog(this, source, categories, categories.map { false }.toBooleanArray())
+            ChangeSourceCategoriesDialog(this, source, categories, emptyArray())
                 .showDialog(router)
         }
     }
@@ -380,13 +378,15 @@ class SourceController(bundle: Bundle? = null) :
         }
 
         override fun onCreateDialog(savedViewState: Bundle?): Dialog {
-            return MaterialAlertDialogBuilder(activity!!)
-                .setTitle(source)
-                .setItems(items.map { it.first }.toTypedArray()) { dialog, which ->
+            return MaterialDialog(activity!!)
+                .title(text = source)
+                .listItems(
+                    items = items.map { it.first },
+                    waitForPositiveButton = false
+                ) { dialog, which, _ ->
                     items[which].second()
                     dialog.dismiss()
                 }
-                .create()
         }
     }
 

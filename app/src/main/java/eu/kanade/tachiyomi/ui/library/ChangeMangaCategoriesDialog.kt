@@ -2,8 +2,9 @@ package eu.kanade.tachiyomi.ui.library
 
 import android.app.Dialog
 import android.os.Bundle
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.list.listItemsMultiChoice
 import com.bluelinelabs.conductor.Controller
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.Category
 import eu.kanade.tachiyomi.data.database.models.Manga
@@ -31,34 +32,32 @@ class ChangeMangaCategoriesDialog<T>(bundle: Bundle? = null) :
     }
 
     override fun onCreateDialog(savedViewState: Bundle?): Dialog {
-        return MaterialAlertDialogBuilder(activity!!)
-            .setTitle(R.string.action_move_category)
-            .setNegativeButton(android.R.string.cancel, null)
+        return MaterialDialog(activity!!)
+            .title(R.string.action_move_category)
+            .negativeButton(android.R.string.cancel)
             .apply {
                 if (categories.isNotEmpty()) {
-                    val selected = categories
-                        .mapIndexed { i, _ -> preselected.contains(i) }
-                        .toBooleanArray()
-                    setMultiChoiceItems(categories.map { it.name }.toTypedArray(), selected) { _, which, checked ->
-                        selected[which] = checked
-                    }
-                    setPositiveButton(android.R.string.ok) { _, _ ->
-                        val newCategories = categories.filterIndexed { i, _ -> selected[i] }
+                    listItemsMultiChoice(
+                        items = categories.map { it.name },
+                        initialSelection = preselected.toIntArray(),
+                        allowEmptySelection = true
+                    ) { _, selections, _ ->
+                        val newCategories = selections.map { categories[it] }
                         (targetController as? Listener)?.updateCategoriesForMangas(mangas, newCategories)
                     }
+                        .positiveButton(android.R.string.ok)
                 } else {
-                    setMessage(R.string.information_empty_category_dialog)
-                    setPositiveButton(R.string.action_edit_categories) { _, _ ->
-                        if (targetController is LibraryController) {
-                            val libController = targetController as LibraryController
-                            libController.clearSelection()
+                    message(R.string.information_empty_category_dialog)
+                        .positiveButton(R.string.action_edit_categories) {
+                            if (targetController is LibraryController) {
+                                val libController = targetController as LibraryController
+                                libController.clearSelection()
+                            }
+                            router.popCurrentController()
+                            router.pushController(CategoryController().withFadeTransaction())
                         }
-                        router.popCurrentController()
-                        router.pushController(CategoryController().withFadeTransaction())
-                    }
                 }
             }
-            .create()
     }
 
     interface Listener {

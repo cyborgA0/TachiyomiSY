@@ -2,8 +2,9 @@ package eu.kanade.tachiyomi.ui.category.sources
 
 import android.app.Dialog
 import android.os.Bundle
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.list.listItemsMultiChoice
 import com.bluelinelabs.conductor.Controller
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.ui.base.controller.DialogController
@@ -13,39 +14,35 @@ class ChangeSourceCategoriesDialog<T>(bundle: Bundle? = null) :
 
     private var source: Source? = null
 
-    private var categories = emptyArray<String>()
+    private var categories = emptyList<String>()
 
-    private var selection = booleanArrayOf()
+    private var preselected = emptyArray<Int>()
 
     constructor(
         target: T,
         source: Source,
-        categories: Array<String>,
-        selection: BooleanArray
+        categories: List<String>,
+        preselected: Array<Int>
     ) : this() {
         this.source = source
         this.categories = categories
-        this.selection = selection
+        this.preselected = preselected
         targetController = target
     }
 
     override fun onCreateDialog(savedViewState: Bundle?): Dialog {
-        return MaterialAlertDialogBuilder(activity!!)
-            .setTitle(R.string.action_move_category)
-            .setMultiChoiceItems(
-                categories,
-                selection
-            ) { _, which, selected ->
-                selection[which] = selected
-            }
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                val newCategories = categories.filterIndexed { index, s ->
-                    selection[index]
-                }
+        return MaterialDialog(activity!!)
+            .title(R.string.action_move_category)
+            .listItemsMultiChoice(
+                items = categories,
+                initialSelection = preselected.toIntArray(),
+                allowEmptySelection = true
+            ) { _, selections, _ ->
+                val newCategories = selections.map { categories[it] }
                 (targetController as? Listener)?.updateCategoriesForSource(source!!, newCategories)
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
+            .positiveButton(android.R.string.ok)
+            .negativeButton(android.R.string.cancel)
     }
 
     interface Listener {

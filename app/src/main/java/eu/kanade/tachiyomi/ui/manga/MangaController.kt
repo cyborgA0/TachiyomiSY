@@ -33,9 +33,10 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.imageLoader
 import coil.loadAny
 import coil.request.ImageRequest
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.list.listItemsSingleChoice
 import com.bluelinelabs.conductor.ControllerChangeHandler
 import com.bluelinelabs.conductor.ControllerChangeType
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
 import com.google.android.material.snackbar.Snackbar
 import dev.chrisbanes.insetter.applyInsetter
@@ -387,7 +388,7 @@ class MangaController :
             }
         }
 
-        trackSheet = TrackSheet(this, manga!!, (activity as MainActivity).supportFragmentManager)
+        trackSheet = TrackSheet(this, manga!!)
 
         presenter.redirectFlow
             .onEach { redirect ->
@@ -617,17 +618,14 @@ class MangaController :
         val sourceManager: SourceManager = Injekt.get()
         val mergedManga = presenter.mergedManga.values.filterNot { it.source == MERGED_SOURCE_ID }
         val sources = mergedManga.map { sourceManager.getOrStub(it.source) }
-        MaterialAlertDialogBuilder(activity!!)
-            .setTitle(R.string.action_open_in_web_view)
-            .setSingleChoiceItems(
-                mergedManga.mapIndexed { index, _ -> sources[index].toString() }
-                    .toTypedArray(),
-                -1
-            ) { dialog, index ->
-                dialog.dismiss()
+        MaterialDialog(activity!!)
+            .title(R.string.action_open_in_web_view)
+            .listItemsSingleChoice(
+                items = mergedManga.mapIndexed { index, _ -> sources[index].toString() }
+            ) { _, index, _ ->
                 openMangaInWebView(mergedManga[index], sources[index] as? HttpSource)
             }
-            .setNegativeButton(android.R.string.cancel, null)
+            .negativeButton(android.R.string.cancel)
             .show()
     }
     // SY <--
@@ -780,16 +778,14 @@ class MangaController :
     fun openRecommends() {
         val source = presenter.source.getMainSource()
         if (source.isMdBasedSource()) {
-            MaterialAlertDialogBuilder(activity!!)
-                .setTitle(R.string.az_recommends)
-                .setSingleChoiceItems(
-                    arrayOf(
+            MaterialDialog(activity!!)
+                .title(R.string.az_recommends)
+                .listItemsSingleChoice(
+                    items = listOf(
                         "MangaDex similar",
                         "Community recommendations"
-                    ),
-                    -1
-                ) { dialog, index ->
-                    dialog.dismiss()
+                    )
+                ) { _, index, _ ->
                     when (index) {
                         0 -> router.pushController(MangaDexSimilarController(presenter.manga, source as CatalogueSource).withFadeTransaction())
                         1 -> router.pushController(RecommendsController(presenter.manga, source as CatalogueSource).withFadeTransaction())

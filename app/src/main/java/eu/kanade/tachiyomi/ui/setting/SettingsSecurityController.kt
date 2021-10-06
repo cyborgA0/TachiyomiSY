@@ -3,7 +3,8 @@ package eu.kanade.tachiyomi.ui.setting
 import android.app.Dialog
 import android.os.Bundle
 import androidx.preference.PreferenceScreen
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.list.listItemsMultiChoice
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.data.preference.asImmediateFlow
@@ -98,7 +99,7 @@ class SettingsSecurityController : SettingsController() {
 
         override fun onCreateDialog(savedViewState: Bundle?): Dialog {
             val activity = activity!!
-            val options = listOf(
+            val options = arrayOf(
                 R.string.sunday,
                 R.string.monday,
                 R.string.tuesday,
@@ -108,11 +109,10 @@ class SettingsSecurityController : SettingsController() {
                 R.string.saturday
             )
                 .map { activity.getString(it) }
-                .toTypedArray()
 
             val lockDays = preferences.authenticatorDays().get()
-            val selection = BooleanArray(7) {
-                when (it) {
+            val initialSelection = List(7) {
+                val locked = when (it) {
                     0 -> (lockDays and SecureActivityDelegate.LOCK_SUNDAY) == SecureActivityDelegate.LOCK_SUNDAY
                     1 -> (lockDays and SecureActivityDelegate.LOCK_MONDAY) == SecureActivityDelegate.LOCK_MONDAY
                     2 -> (lockDays and SecureActivityDelegate.LOCK_TUESDAY) == SecureActivityDelegate.LOCK_TUESDAY
@@ -122,36 +122,35 @@ class SettingsSecurityController : SettingsController() {
                     6 -> (lockDays and SecureActivityDelegate.LOCK_SATURDAY) == SecureActivityDelegate.LOCK_SATURDAY
                     else -> false
                 }
-            }
+                if (locked) {
+                    it
+                } else null
+            }.filterNotNull().toIntArray()
 
-            return MaterialAlertDialogBuilder(activity)
-                .setTitle(R.string.biometric_lock_days)
-                .setMultiChoiceItems(
-                    options,
-                    selection
-                ) { _, which, selected ->
-                    selection[which] = selected
-                }
-                .setPositiveButton(android.R.string.ok) { _, _ ->
+            return MaterialDialog(activity)
+                .title(R.string.biometric_lock_days)
+                .message(R.string.biometric_lock_days_summary)
+                .listItemsMultiChoice(
+                    items = options,
+                    initialSelection = initialSelection
+                ) { _, positions, _ ->
                     var flags = 0
-                    selection.forEachIndexed { index, checked ->
-                        if (checked) {
-                            when (index) {
-                                0 -> flags = flags or SecureActivityDelegate.LOCK_SUNDAY
-                                1 -> flags = flags or SecureActivityDelegate.LOCK_MONDAY
-                                2 -> flags = flags or SecureActivityDelegate.LOCK_TUESDAY
-                                3 -> flags = flags or SecureActivityDelegate.LOCK_WEDNESDAY
-                                4 -> flags = flags or SecureActivityDelegate.LOCK_THURSDAY
-                                5 -> flags = flags or SecureActivityDelegate.LOCK_FRIDAY
-                                6 -> flags = flags or SecureActivityDelegate.LOCK_SATURDAY
-                            }
+                    positions.forEach {
+                        when (it) {
+                            0 -> flags = flags or SecureActivityDelegate.LOCK_SUNDAY
+                            1 -> flags = flags or SecureActivityDelegate.LOCK_MONDAY
+                            2 -> flags = flags or SecureActivityDelegate.LOCK_TUESDAY
+                            3 -> flags = flags or SecureActivityDelegate.LOCK_WEDNESDAY
+                            4 -> flags = flags or SecureActivityDelegate.LOCK_THURSDAY
+                            5 -> flags = flags or SecureActivityDelegate.LOCK_FRIDAY
+                            6 -> flags = flags or SecureActivityDelegate.LOCK_SATURDAY
                         }
                     }
 
                     preferences.authenticatorDays().set(flags)
                 }
-                .setNegativeButton(android.R.string.cancel, null)
-                .create()
+                .positiveButton(android.R.string.ok)
+                .negativeButton(android.R.string.cancel)
         }
     }
 }

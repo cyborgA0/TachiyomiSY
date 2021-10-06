@@ -8,14 +8,13 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.WindowManager
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.drawable.DrawableCompat
 import androidx.core.view.isVisible
+import com.afollestad.materialdialogs.MaterialDialog
 import com.bluelinelabs.conductor.ControllerChangeHandler
 import com.bluelinelabs.conductor.ControllerChangeType
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayout
 import com.jakewharton.rxrelay.BehaviorRelay
 import com.jakewharton.rxrelay.PublishRelay
@@ -141,7 +140,7 @@ class LibraryController(
 
     // --> EH
     // Sync dialog
-    private var favSyncDialog: AlertDialog? = null
+    private var favSyncDialog: MaterialDialog? = null
 
     // Old sync status
     private var oldSyncStatus: FavoritesSyncStatus? = null
@@ -752,16 +751,14 @@ class LibraryController(
     }
 
     private fun buildDialog() = activity?.let {
-        MaterialAlertDialogBuilder(it)
+        MaterialDialog(it)
     }
 
     private fun showSyncProgressDialog() {
         favSyncDialog?.dismiss()
         favSyncDialog = buildDialog()
-            ?.setTitle(R.string.favorites_syncing)
-            ?.setMessage("")
-            ?.setCancelable(false)
-            ?.create()
+            ?.title(R.string.favorites_syncing)
+            ?.cancelable(false)
         favSyncDialog?.show()
     }
 
@@ -786,17 +783,16 @@ class LibraryController(
 
                 favSyncDialog?.dismiss()
                 favSyncDialog = buildDialog()
-                    ?.setTitle(R.string.favorites_sync_error)
-                    ?.setMessage(activity!!.getString(R.string.favorites_sync_bad_library_state, status.message))
-                    ?.setCancelable(false)
-                    ?.setPositiveButton(R.string.show_gallery) { _, _ ->
+                    ?.title(R.string.favorites_sync_error)
+                    ?.message(text = activity!!.getString(R.string.favorites_sync_bad_library_state, status.message))
+                    ?.cancelable(false)
+                    ?.positiveButton(R.string.show_gallery) {
                         openManga(status.manga)
                         presenter.favoritesSync.status.value = FavoritesSyncStatus.Idle(activity!!)
                     }
-                    ?.setNegativeButton(android.R.string.ok) { _, _ ->
+                    ?.negativeButton(android.R.string.ok) {
                         presenter.favoritesSync.status.value = FavoritesSyncStatus.Idle(activity!!)
                     }
-                    ?.create()
                 favSyncDialog?.show()
             }
             is FavoritesSyncStatus.Error -> {
@@ -804,13 +800,12 @@ class LibraryController(
 
                 favSyncDialog?.dismiss()
                 favSyncDialog = buildDialog()
-                    ?.setTitle(R.string.favorites_sync_error)
-                    ?.setMessage(activity!!.getString(R.string.favorites_sync_error_string, status.message))
-                    ?.setCancelable(false)
-                    ?.setPositiveButton(android.R.string.ok) { _, _ ->
+                    ?.title(R.string.favorites_sync_error)
+                    ?.message(text = activity!!.getString(R.string.favorites_sync_error_string, status.message))
+                    ?.cancelable(false)
+                    ?.positiveButton(android.R.string.ok) {
                         presenter.favoritesSync.status.value = FavoritesSyncStatus.Idle(activity!!)
                     }
-                    ?.create()
                 favSyncDialog?.show()
             }
             is FavoritesSyncStatus.CompleteWithErrors -> {
@@ -818,13 +813,12 @@ class LibraryController(
 
                 favSyncDialog?.dismiss()
                 favSyncDialog = buildDialog()
-                    ?.setTitle(R.string.favorites_sync_done_errors)
-                    ?.setMessage(activity!!.getString(R.string.favorites_sync_done_errors_message, status.message))
-                    ?.setCancelable(false)
-                    ?.setPositiveButton(android.R.string.ok) { _, _ ->
+                    ?.title(R.string.favorites_sync_done_errors)
+                    ?.message(text = activity!!.getString(R.string.favorites_sync_done_errors_message, status.message))
+                    ?.cancelable(false)
+                    ?.positiveButton(android.R.string.ok) {
                         presenter.favoritesSync.status.value = FavoritesSyncStatus.Idle(activity!!)
                     }
-                    ?.create()
                 favSyncDialog?.show()
             }
             is FavoritesSyncStatus.Processing,
@@ -840,13 +834,13 @@ class LibraryController(
                     showSyncProgressDialog()
                 }
 
-                favSyncDialog?.setMessage(status.message)
+                favSyncDialog?.message(text = status.message)
             }
         }
         oldSyncStatus = status
         if (status is FavoritesSyncStatus.Processing && status.delayedMessage != null) {
             delay(5.seconds)
-            favSyncDialog?.setMessage(status.delayedMessage)
+            favSyncDialog?.message(text = status.delayedMessage)
         }
     }
 

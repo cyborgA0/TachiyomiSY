@@ -1,7 +1,8 @@
 package eu.kanade.tachiyomi.ui.setting
 
 import androidx.preference.PreferenceScreen
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.list.listItemsMultiChoice
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.library.LibraryUpdateService
 import eu.kanade.tachiyomi.data.preference.PreferenceKeys
@@ -66,33 +67,21 @@ class SettingsMangaDexController :
             summaryRes = R.string.mangadex_sync_follows_to_library_summary
 
             onClick {
-                val items = context.resources.getStringArray(R.array.md_follows_options)
-                    .drop(1)
-                    .toTypedArray()
-                val selection = items.mapIndexed { index, _ ->
-                    index == 0 || index == 5
-                }.toBooleanArray()
-                MaterialAlertDialogBuilder(context)
-                    .setTitle(R.string.mangadex_sync_follows_to_library)
-                    // .setMessage(R.string.mangadex_sync_follows_to_library_message)
-                    .setMultiChoiceItems(
-                        items,
-                        selection
-                    ) { _, which, selected ->
-                        selection[which] = selected
-                    }
-                    .setPositiveButton(android.R.string.ok) { _, _ ->
-                        preferences.mangadexSyncToLibraryIndexes().set(
-                            items.filterIndexed { index, _ -> selection[index] }
-                                .mapIndexed { index, _ -> (index + 1).toString() }
-                                .toSet()
-                        )
+                MaterialDialog(context)
+                    .title(R.string.mangadex_sync_follows_to_library)
+                    .message(R.string.mangadex_sync_follows_to_library_message)
+                    .listItemsMultiChoice(
+                        items = context.resources.getStringArray(R.array.md_follows_options).toList().let { it.subList(1, it.size) },
+                        initialSelection = intArrayOf(0, 5)
+                    ) { _, indices, _ ->
+                        preferences.mangadexSyncToLibraryIndexes().set(indices.map { (it + 1).toString() }.toSet())
                         LibraryUpdateService.start(
                             context,
                             target = LibraryUpdateService.Target.SYNC_FOLLOWS
                         )
                     }
-                    .setNegativeButton(android.R.string.cancel, null)
+                    .positiveButton(android.R.string.ok)
+                    .negativeButton(android.R.string.cancel)
                     .show()
             }
         }

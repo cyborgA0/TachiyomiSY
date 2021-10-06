@@ -5,7 +5,7 @@ import android.app.Activity
 import android.util.Log
 import androidx.core.text.HtmlCompat
 import androidx.preference.PreferenceScreen
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.afollestad.materialdialogs.MaterialDialog
 import eu.kanade.tachiyomi.ui.setting.SettingsController
 import eu.kanade.tachiyomi.util.preference.defaultValue
 import eu.kanade.tachiyomi.util.preference.onClick
@@ -36,13 +36,23 @@ class SettingsDebugController : SettingsController() {
                         try {
                             val result = it.call(DebugFunctions)
                             val text = "Function returned result:\n\n$result"
-                            MaterialAlertDialogBuilder(context)
-                                .setTitle(title.toString())
-                                .setMessage(text)
+                            MaterialDialog(context)
+                                .title(text = title.toString())
+                                .message(text = text) {
+                                    messageTextView.apply {
+                                        setHorizontallyScrolling(true)
+                                        setTextIsSelectable(true)
+                                    }
+                                }
                         } catch (t: Throwable) {
                             val text = "Function threw exception:\n\n${Log.getStackTraceString(t)}"
-                            MaterialAlertDialogBuilder(context)
-                                .setMessage(text)
+                            MaterialDialog(context)
+                                .message(text = text) {
+                                    messageTextView.apply {
+                                        setHorizontallyScrolling(true)
+                                        setTextIsSelectable(true)
+                                    }
+                                }
                         }.show()
                     }
                 }

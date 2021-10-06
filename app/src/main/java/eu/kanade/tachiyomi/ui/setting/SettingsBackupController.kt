@@ -9,12 +9,12 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.documentfile.provider.DocumentFile
 import androidx.preference.PreferenceScreen
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.list.listItemsMultiChoice
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.backup.BackupConst
@@ -255,38 +255,33 @@ class SettingsBackupController : SettingsController() {
                 // SY <--
             )
                 .map { activity.getString(it) }
-            val selected = options.map { true }.toBooleanArray()
 
-            return MaterialAlertDialogBuilder(activity)
-                .setTitle(R.string.backup_choice)
-                .setMultiChoiceItems(options.toTypedArray(), selected) { dialog, which, checked ->
-                    if (which == 0) {
-                        (dialog as AlertDialog).listView.setItemChecked(which, true)
-                    } else {
-                        selected[which] = checked
-                    }
-                }
-                .setPositiveButton(R.string.action_create) { _, _ ->
+            return MaterialDialog(activity)
+                .title(R.string.pref_create_backup)
+                .message(R.string.backup_choice)
+                .listItemsMultiChoice(
+                    items = options,
+                    disabledIndices = intArrayOf(0),
+                    initialSelection = intArrayOf(0, 1, 2, 3, 4 /* SY --> */, 5, 6 /* SY <-- */)
+                ) { _, positions, _ ->
                     var flags = 0
-                    selected.forEachIndexed { i, checked ->
-                        if (checked) {
-                            when (i) {
-                                1 -> flags = flags or BackupCreateService.BACKUP_CATEGORY
-                                2 -> flags = flags or BackupCreateService.BACKUP_CHAPTER
-                                3 -> flags = flags or BackupCreateService.BACKUP_TRACK
-                                4 -> flags = flags or BackupCreateService.BACKUP_HISTORY
-                                // SY -->
-                                5 -> flags = flags or BackupCreateService.BACKUP_CUSTOM_INFO
-                                6 -> flags = flags or BackupCreateService.BACKUP_READ_MANGA
-                                // SY <--
-                            }
+                    for (i in 1 until positions.size) {
+                        when (positions[i]) {
+                            1 -> flags = flags or BackupCreateService.BACKUP_CATEGORY
+                            2 -> flags = flags or BackupCreateService.BACKUP_CHAPTER
+                            3 -> flags = flags or BackupCreateService.BACKUP_TRACK
+                            4 -> flags = flags or BackupCreateService.BACKUP_HISTORY
+                            // SY -->
+                            5 -> flags = flags or BackupCreateService.BACKUP_CUSTOM_INFO
+                            6 -> flags = flags or BackupCreateService.BACKUP_READ_MANGA
+                            // SY <--
                         }
                     }
 
                     (targetController as? SettingsBackupController)?.createBackup(flags)
                 }
-                .setNegativeButton(android.R.string.cancel, null)
-                .create()
+                .positiveButton(R.string.action_create)
+                .negativeButton(android.R.string.cancel)
         }
     }
 
@@ -324,19 +319,17 @@ class SettingsBackupController : SettingsController() {
                     message += "\n\n${activity.getString(R.string.backup_restore_missing_trackers)}\n${results.missingTrackers.joinToString("\n") { "- $it" }}"
                 }
 
-                MaterialAlertDialogBuilder(activity)
-                    .setTitle(R.string.pref_restore_backup)
-                    .setMessage(message)
-                    .setPositiveButton(R.string.action_restore) { _, _ ->
+                MaterialDialog(activity)
+                    .title(R.string.pref_restore_backup)
+                    .message(text = message)
+                    .positiveButton(R.string.action_restore) {
                         BackupRestoreService.start(activity, uri, type)
                     }
-                    .create()
             } catch (e: Exception) {
-                MaterialAlertDialogBuilder(activity)
-                    .setTitle(R.string.invalid_backup_file)
-                    .setMessage(e.message)
-                    .setPositiveButton(android.R.string.cancel, null)
-                    .create()
+                MaterialDialog(activity)
+                    .title(R.string.invalid_backup_file)
+                    .message(text = e.message)
+                    .positiveButton(android.R.string.cancel)
             }
         }
 

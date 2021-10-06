@@ -3,7 +3,7 @@ package exh.widget.preference
 import android.app.Dialog
 import android.os.Bundle
 import androidx.core.os.bundleOf
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.afollestad.materialdialogs.MaterialDialog
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.track.TrackManager
 import eu.kanade.tachiyomi.source.Source
@@ -33,9 +33,9 @@ class MangadexLogoutDialog(bundle: Bundle? = null) : DialogController(bundle) {
     )
 
     override fun onCreateDialog(savedViewState: Bundle?): Dialog {
-        return MaterialAlertDialogBuilder(activity!!)
-            .setTitle(R.string.logout)
-            .setPositiveButton(R.string.logout) { _, _ ->
+        return MaterialDialog(activity!!)
+            .title(R.string.logout)
+            .positiveButton(R.string.logout) {
                 launchNow {
                     supervisorScope {
                         if (source != null) {
@@ -57,8 +57,7 @@ class MangadexLogoutDialog(bundle: Bundle? = null) : DialogController(bundle) {
                     }
                 }
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
+            .negativeButton(android.R.string.cancel)
     }
 
     interface Listener {

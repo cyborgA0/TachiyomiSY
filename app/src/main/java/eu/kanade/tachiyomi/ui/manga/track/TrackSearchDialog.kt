@@ -74,9 +74,14 @@ class TrackSearchDialog : DialogController {
                         dialog?.dismiss()
                     }
                 }
+                R.id.remove -> {
+                    trackController.presenter.unregisterTracking(service)
+                    dialog?.dismiss()
+                }
             }
             true
         }
+        binding!!.toolbar.menu.findItem(R.id.remove).isVisible = currentTrackUrl != null
 
         // Create adapter
         adapter = TrackSearchAdapter(currentTrackUrl) { which ->

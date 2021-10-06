@@ -5,10 +5,11 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import androidx.annotation.StringRes
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.customview.customView
 import com.bluelinelabs.conductor.ControllerChangeHandler
 import com.bluelinelabs.conductor.ControllerChangeType
 import com.dd.processbutton.iml.ActionProcessButton
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.databinding.PrefAccountLoginBinding
@@ -27,13 +28,15 @@ abstract class LoginDialogPreference(
 
     override fun onCreateDialog(savedViewState: Bundle?): Dialog {
         binding = PrefAccountLoginBinding.inflate(LayoutInflater.from(activity!!))
-        onViewCreated(binding!!.root)
         val titleName = activity!!.getString(getTitleName())
-        return MaterialAlertDialogBuilder(activity!!)
-            .setTitle(activity!!.getString(R.string.login_title, titleName))
-            .setView(binding!!.root)
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
+        val dialog = MaterialDialog(activity!!)
+            .title(text = activity!!.getString(R.string.login_title, titleName))
+            .customView(view = binding!!.root)
+            .negativeButton(android.R.string.cancel)
+
+        onViewCreated(dialog.view)
+
+        return dialog
     }
 
     /* SY --> */ open /* SY <-- */ fun onViewCreated(view: View) {

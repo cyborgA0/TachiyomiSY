@@ -3,8 +3,9 @@ package eu.kanade.tachiyomi.ui.manga.chapter
 import android.app.Dialog
 import android.os.Bundle
 import androidx.core.os.bundleOf
+import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.customview.customView
 import com.bluelinelabs.conductor.Controller
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.base.controller.DialogController
 import eu.kanade.tachiyomi.widget.DialogCustomDownloadView
@@ -56,14 +57,13 @@ class DownloadCustomChaptersDialog<T> : DialogController
 
         // Build dialog.
         // when positive dialog is pressed call custom listener.
-        return MaterialAlertDialogBuilder(activity)
-            .setTitle(R.string.custom_download)
-            .setView(view)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
+        return MaterialDialog(activity)
+            .title(R.string.custom_download)
+            .customView(view = view, scrollable = true)
+            .positiveButton(android.R.string.ok) {
                 (targetController as? Listener)?.downloadCustomChapters(view.amount)
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .create()
+            .negativeButton(android.R.string.cancel)
     }
 
     interface Listener {
