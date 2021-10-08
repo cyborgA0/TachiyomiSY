@@ -2,9 +2,9 @@ package eu.kanade.tachiyomi.widget.materialdialogs
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.os.Build
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatTextView
-import androidx.core.widget.TextViewCompat
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.util.system.getThemeColor
 
@@ -29,10 +29,12 @@ class QuadStateTextView @JvmOverloads constructor(context: Context, attrs: Attri
         val tint = if (state == State.UNCHECKED) {
             context.getThemeColor(R.attr.colorControlNormal)
         } else {
-            context.getThemeColor(R.attr.colorPrimary)
+            context.getThemeColor(R.attr.colorAccent)
         }
         if (tint != 0) {
-            TextViewCompat.setCompoundDrawableTintList(this, ColorStateList.valueOf(tint))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                compoundDrawableTintList = ColorStateList.valueOf(tint)
+            }
         }
     }
 
