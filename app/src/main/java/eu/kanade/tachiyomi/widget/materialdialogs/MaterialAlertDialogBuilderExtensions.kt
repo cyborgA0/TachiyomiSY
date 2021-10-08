@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.widget.materialdialogs
 
+import android.os.Build
 import android.view.LayoutInflater
 import android.view.inputmethod.InputMethodManager
 import android.widget.TextView
@@ -58,8 +59,12 @@ fun MaterialAlertDialogBuilder.setQuadStateMultiChoiceItems(
         binding.scrollIndicatorUp.isVisible = binding.list.canScrollVertically(-1)
         binding.scrollIndicatorDown.isVisible = binding.list.canScrollVertically(1)
     }
-    binding.list.setOnScrollChangeListener { _, _, _, _, _ ->
-        updateScrollIndicators()
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        // damn! only for api 23
+        binding.list.setOnScrollChangeListener { _, _, _, _, _ ->
+            updateScrollIndicators()
+        }
     }
     binding.list.post {
         updateScrollIndicators()
