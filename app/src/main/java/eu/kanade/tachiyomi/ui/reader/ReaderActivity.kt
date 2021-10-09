@@ -527,7 +527,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
     }
 
     // EXH -->
-    fun initBottomShortcuts() {
+    private fun initBottomShortcuts() {
         // Reading mode
         with(binding.actionReadingMode) {
             setTooltip(R.string.viewer)
@@ -663,7 +663,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         }
     }
 
-    fun initDropdownMenu() {
+    private fun initDropdownMenu() {
         binding.expandEhButton.clicks()
             .onEach {
                 ehUtilsVisible = !ehUtilsVisible
