@@ -1,5 +1,8 @@
-import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.TimeZone
 
 plugins {
     id("com.android.application")
@@ -8,11 +11,13 @@ plugins {
     kotlin("plugin.parcelize")
     kotlin("plugin.serialization")
     id("com.github.zellius.shortcut-helper")
-    id("com.squareup.sqldelight")
+    // Realm (EH)
+    kotlin("kapt")
+    id("realm-android")
 }
 
-if (gradle.startParameter.taskRequests.toString().contains("Standard")) {
-    apply<com.google.gms.googleservices.GoogleServicesPlugin>()
+if (!gradle.startParameter.taskRequests.toString().contains("Debug")) {
+    apply(plugin = "com.google.gms.google-services")
     // Firebase Crashlytics
     apply(plugin = "com.google.firebase.crashlytics")
 }
@@ -20,7 +25,6 @@ if (gradle.startParameter.taskRequests.toString().contains("Standard")) {
 shortcutHelper.setFilePath("./shortcuts.xml")
 
 android {
-    namespace = "eu.kanade.tachiyomi"
     compileSdk = AndroidConfig.compileSdk
     ndkVersion = AndroidConfig.ndk
 
@@ -28,8 +32,9 @@ android {
         applicationId = "eu.kanade.tachiyomi.sy"
         minSdk = AndroidConfig.minSdk
         targetSdk = AndroidConfig.targetSdk
-        versionCode = 37
-        versionName = "1.8.4"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        versionCode = 21
+        versionName = "1.7.0"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
         buildConfigField("String", "COMMIT_SHA", "\"${getGitSha()}\"")
@@ -39,7 +44,6 @@ android {
         ndk {
             abiFilters += setOf("armeabi-v7a", "arm64-v8a", "x86")
         }
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -60,7 +64,7 @@ android {
         }
     }
 
-    flavorDimensions += "default"
+    flavorDimensions("default")
 
     productFlavors {
         create("standard") {
@@ -82,10 +86,8 @@ android {
             "LICENSE.txt",
             "META-INF/LICENSE",
             "META-INF/LICENSE.txt",
-            "META-INF/README.md",
             "META-INF/NOTICE",
-            "META-INF/*.kotlin_module",
-            "META-INF/*.version",
+            "META-INF/*.kotlin_module"
         ))
     }
 
@@ -95,22 +97,12 @@ android {
 
     buildFeatures {
         viewBinding = true
-        compose = true
-
-        // Disable some unused things
-        aidl = false
-        renderScript = false
-        shaders = false
     }
 
     lint {
-        disable.addAll(listOf("MissingTranslation", "ExtraTranslation"))
-        abortOnError = false
-        checkReleaseBuilds = false
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = compose.versions.compiler.get()
+        disable("MissingTranslation", "ExtraTranslation")
+        isAbortOnError = false
+        isCheckReleaseBuilds = false
     }
 
     compileOptions {
@@ -121,196 +113,202 @@ android {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_1_8.toString()
     }
-
-    sqldelight {
-        database("Database") {
-            packageName = "eu.kanade.tachiyomi"
-            dialect = "sqlite:3.24"
-        }
-    }
 }
 
 dependencies {
-    // Compose
-    implementation(compose.activity)
-    implementation(compose.foundation)
-    implementation(compose.material3.core)
-    implementation(compose.material3.windowsizeclass)
-    implementation(compose.material3.adapter)
-    implementation(compose.material.icons)
-    implementation(compose.animation)
-    implementation(compose.animation.graphics)
-    implementation(compose.ui.tooling)
-    implementation(compose.ui.util)
-    implementation(compose.accompanist.webview)
-    implementation(compose.accompanist.swiperefresh)
-    implementation(compose.accompanist.flowlayout)
-    implementation(compose.accompanist.pager.core)
-    implementation(compose.accompanist.pager.indicators)
+    implementation(kotlin("reflect", version = BuildPluginsVersion.KOTLIN))
 
-    implementation(androidx.paging.runtime)
-    implementation(androidx.paging.compose)
-
-    implementation(libs.bundles.sqlite)
-    implementation(androidx.sqlite)
-    implementation(libs.sqldelight.android.driver)
-    implementation(libs.sqldelight.coroutines)
-    implementation(libs.sqldelight.android.paging)
-
-    implementation(kotlinx.reflect)
-    implementation(kotlinx.bundles.coroutines)
+    val coroutinesVersion = "1.5.2"
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion")
 
     // Source models and interfaces from Tachiyomi 1.x
-    implementation(libs.tachiyomi.api)
+    implementation("org.tachiyomi:source-api:1.1")
 
     // AndroidX libraries
-    implementation(androidx.annotation)
-    implementation(androidx.appcompat)
-    implementation(androidx.biometricktx)
-    implementation(androidx.constraintlayout)
-    implementation(androidx.coordinatorlayout)
-    implementation(androidx.corektx)
-    implementation(androidx.splashscreen)
-    implementation(androidx.recyclerview)
-    implementation(androidx.viewpager)
-    implementation(androidx.glance)
+    implementation("androidx.annotation:annotation:1.3.0-alpha01")
+    implementation("androidx.appcompat:appcompat:1.4.0-alpha03")
+    implementation("androidx.biometric:biometric-ktx:1.2.0-alpha03")
+    implementation("androidx.browser:browser:1.4.0-alpha01")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.0")
+    implementation("androidx.coordinatorlayout:coordinatorlayout:1.1.0")
+    implementation("androidx.core:core-ktx:1.7.0-beta01")
+    implementation("androidx.core:core-splashscreen:1.0.0-alpha01")
+    implementation("androidx.recyclerview:recyclerview:1.3.0-alpha01")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.2.0-alpha01")
+    implementation("androidx.viewpager:viewpager:1.1.0-alpha01")
 
-    implementation(androidx.bundles.lifecycle)
+    val lifecycleVersion = "2.4.0-beta01"
+    implementation("androidx.lifecycle:lifecycle-common:$lifecycleVersion")
+    implementation("androidx.lifecycle:lifecycle-process:$lifecycleVersion")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
 
     // Job scheduling
-    implementation(androidx.bundles.workmanager)
+    implementation("androidx.work:work-runtime-ktx:2.6.0")
 
     // RX
-    implementation(libs.bundles.reactivex)
-    implementation(libs.flowreactivenetwork)
+    implementation("io.reactivex:rxandroid:1.2.1")
+    implementation("io.reactivex:rxjava:1.3.8")
+    implementation("com.jakewharton.rxrelay:rxrelay:1.2.0")
+    implementation("ru.beryukhov:flowreactivenetwork:1.0.4")
 
     // Network client
-    implementation(libs.bundles.okhttp)
-    implementation(libs.okio)
+    val okhttpVersion = "4.9.1"
+    implementation("com.squareup.okhttp3:okhttp:$okhttpVersion")
+    implementation("com.squareup.okhttp3:logging-interceptor:$okhttpVersion")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:$okhttpVersion")
+    implementation("com.squareup.okio:okio:2.10.0")
 
     // TLS 1.3 support for Android < 10
-    implementation(libs.conscrypt.android)
+    implementation("org.conscrypt:conscrypt-android:2.5.2")
 
     // Data serialization (JSON, protobuf)
-    implementation(kotlinx.bundles.serialization)
+    val kotlinSerializationVersion = "1.3.0"
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$kotlinSerializationVersion")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:$kotlinSerializationVersion")
+
+    // TODO: remove these once they're no longer used in any extensions
+    implementation("com.google.code.gson:gson:2.8.7")
+    implementation("com.github.salomonbrys.kotson:kotson:2.5.0")
 
     // JavaScript engine
-    implementation(libs.bundles.js.engine)
+    implementation("com.squareup.duktape:duktape-android:1.4.0")
 
     // HTML parser
-    implementation(libs.jsoup)
+    implementation("org.jsoup:jsoup:1.14.2")
 
     // Disk
-    implementation(libs.disklrucache)
-    implementation(libs.unifile)
-    implementation(libs.junrar)
+    implementation("com.jakewharton:disklrucache:2.0.2")
+    implementation("com.github.tachiyomiorg:unifile:17bec43")
+    implementation("com.github.junrar:junrar:7.4.0")
+
+    // Database
+    implementation("androidx.sqlite:sqlite-ktx:2.1.0")
+    implementation("com.github.inorichi.storio:storio-common:8be19de@aar")
+    implementation("com.github.inorichi.storio:storio-sqlite:8be19de@aar")
+    implementation("com.github.requery:sqlite-android:3.36.0")
 
     // Preferences
-    implementation(libs.preferencektx)
-    implementation(libs.flowpreferences)
+    implementation("androidx.preference:preference-ktx:1.1.1")
+    implementation("com.github.tfcporciuncula.flow-preferences:flow-preferences:1.4.0")
 
     // Model View Presenter
-    implementation(libs.bundles.nucleus)
+    val nucleusVersion = "3.0.0"
+    implementation("info.android15.nucleus:nucleus:$nucleusVersion")
+    implementation("info.android15.nucleus:nucleus-support-v7:$nucleusVersion")
 
     // Dependency injection
-    implementation(libs.injekt.core)
+    implementation("com.github.inorichi.injekt:injekt-core:65b0440")
 
     // Image loading
-    implementation(libs.bundles.coil)
+    val coilVersion = "1.3.2"
+    implementation("io.coil-kt:coil:$coilVersion")
+    implementation("io.coil-kt:coil-gif:$coilVersion")
 
-    implementation(libs.subsamplingscaleimageview) {
+    implementation("com.github.tachiyomiorg:subsampling-scale-image-view:6caf21") {
         exclude(module = "image-decoder")
     }
-    implementation(libs.image.decoder)
+    implementation("com.github.tachiyomiorg:image-decoder:7481a4a")
 
     // Sort
-    implementation(libs.natural.comparator)
+    implementation("com.github.gpanther:java-nat-sort:natural-comparator-1.1")
 
     // UI libraries
-    implementation(libs.material)
-    implementation(libs.androidprocessbutton)
-    implementation(libs.flexible.adapter.core)
-    implementation(libs.flexible.adapter.ui)
-    implementation(libs.photoview)
-    implementation(libs.directionalviewpager) {
+    implementation("com.google.android.material:material:1.5.0-alpha03")
+    implementation("com.github.dmytrodanylyk.android-process-button:library:1.0.4")
+    implementation("eu.davidea:flexible-adapter:5.1.0")
+    implementation("eu.davidea:flexible-adapter-ui:1.0.0")
+    implementation("com.nightlynexus.viewstatepageradapter:viewstatepageradapter:1.1.0")
+    implementation("com.github.chrisbanes:PhotoView:2.3.0")
+    implementation("com.github.tachiyomiorg:DirectionalViewPager:1.0.0") {
         exclude(group = "androidx.viewpager", module = "viewpager")
     }
-    implementation(libs.insetter)
-    implementation(libs.markwon)
-    implementation(libs.aboutLibraries.compose)
+    implementation("dev.chrisbanes.insetter:insetter:0.6.0")
 
     // Conductor
-    implementation(libs.bundles.conductor)
+    val conductorVersion = "3.0.0"
+    implementation("com.bluelinelabs:conductor:$conductorVersion")
+    implementation("com.bluelinelabs:conductor-viewpager:$conductorVersion")
+    implementation("com.github.tachiyomiorg:conductor-support-preference:$conductorVersion")
 
     // FlowBinding
-    implementation(libs.bundles.flowbinding)
+    val flowbindingVersion = "1.2.0"
+    implementation("io.github.reactivecircus.flowbinding:flowbinding-android:$flowbindingVersion")
+    implementation("io.github.reactivecircus.flowbinding:flowbinding-appcompat:$flowbindingVersion")
+    implementation("io.github.reactivecircus.flowbinding:flowbinding-recyclerview:$flowbindingVersion")
+    implementation("io.github.reactivecircus.flowbinding:flowbinding-swiperefreshlayout:$flowbindingVersion")
+    implementation("io.github.reactivecircus.flowbinding:flowbinding-viewpager:$flowbindingVersion")
 
     // Logging
-    implementation(libs.logcat)
+    implementation("com.jakewharton.timber:timber:5.0.1")
 
     // Crash reports/analytics
-    // implementation(libs.acra.http)
-    // "standardImplementation"(libs.firebase.analytics)
+    //implementation("ch.acra:acra-http:5.8.1")
+    //"standardImplementation"("com.google.firebase:firebase-analytics:19.0.1")
+
+    // Licenses
+    implementation("com.mikepenz:aboutlibraries-core:${BuildPluginsVersion.ABOUTLIB_PLUGIN}")
 
     // Shizuku
-    implementation(libs.bundles.shizuku)
+    val shizukuVersion = "12.0.0"
+    implementation("dev.rikka.shizuku:api:$shizukuVersion")
+    implementation("dev.rikka.shizuku:provider:$shizukuVersion")
 
     // Tests
-    testImplementation(libs.junit)
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.assertj:assertj-core:3.16.1")
+    testImplementation("org.mockito:mockito-core:1.10.19")
+
+    val robolectricVersion = "3.1.4"
+    testImplementation("org.robolectric:robolectric:$robolectricVersion")
+    testImplementation("org.robolectric:shadows-play-services:$robolectricVersion")
 
     // For detecting memory leaks; see https://square.github.io/leakcanary/
-    // debugImplementation(libs.leakcanary.android)
-    implementation(libs.leakcanary.plumber)
+    // debugImplementation("com.squareup.leakcanary:leakcanary-android:2.7")
 
     // SY -->
     // Changelog
-    implementation(sylibs.changelog)
+    implementation("com.github.gabrielemariotti.changeloglib:changelog:2.1.0")
 
     // Text distance (EH)
-    implementation (sylibs.simularity)
+    implementation ("info.debatty:java-string-similarity:2.0.0")
 
     // Firebase (EH)
-    implementation(sylibs.firebase.analytics)
-    implementation(sylibs.firebase.crashlytics.ktx)
+    implementation("com.google.firebase:firebase-analytics-ktx:19.0.1")
+    implementation("com.google.firebase:firebase-crashlytics-ktx:18.2.1")
 
     // Better logging (EH)
-    implementation(sylibs.xlog)
+    implementation("com.elvishew:xlog:1.11.0")
 
     // Debug utils (EH)
-    debugImplementation(sylibs.debugOverlay.standard)
-    "releaseTestImplementation"(sylibs.debugOverlay.noop)
-    releaseImplementation(sylibs.debugOverlay.noop)
-    testImplementation(sylibs.debugOverlay.noop)
+    val debugOverlayVersion = "1.1.3"
+    debugImplementation("com.ms-square:debugoverlay:$debugOverlayVersion")
+    "releaseTestImplementation"("com.ms-square:debugoverlay-no-op:$debugOverlayVersion")
+    releaseImplementation("com.ms-square:debugoverlay-no-op:$debugOverlayVersion")
+    testImplementation("com.ms-square:debugoverlay-no-op:$debugOverlayVersion")
 
     // RatingBar (SY)
-    implementation(sylibs.ratingbar)
+    implementation("me.zhanghai.android.materialratingbar:library:1.4.0")
 }
 
 tasks {
-    withType<Test> {
-        useJUnitPlatform()
-        testLogging {
-            events(TestLogEvent.PASSED, TestLogEvent.SKIPPED, TestLogEvent.FAILED)
-        }
-    }
-
     // See https://kotlinlang.org/docs/reference/experimental.html#experimental-status-of-experimental-api(-markers)
     withType<KotlinCompile> {
         kotlinOptions.freeCompilerArgs += listOf(
-            "-opt-in=coil.annotation.ExperimentalCoilApi",
-            "-opt-in=com.google.accompanist.pager.ExperimentalPagerApi",
-            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
-            "-opt-in=androidx.compose.ui.ExperimentalComposeUiApi",
-            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
-            "-opt-in=androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi",
-            "-opt-in=androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi",
-            "-opt-in=kotlinx.coroutines.InternalCoroutinesApi",
-            "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
+            "-Xopt-in=kotlin.Experimental",
+            "-Xopt-in=kotlin.RequiresOptIn",
+            "-Xopt-in=kotlin.ExperimentalStdlibApi",
+            "-Xopt-in=kotlinx.coroutines.FlowPreview",
+            "-Xopt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+            "-Xopt-in=kotlinx.coroutines.InternalCoroutinesApi",
+            "-Xopt-in=kotlinx.serialization.ExperimentalSerializationApi",
+            "-Xopt-in=coil.annotation.ExperimentalCoilApi",
+            "-Xopt-in=kotlin.time.ExperimentalTime",
         )
     }
 
     // Duplicating Hebrew string assets due to some locale code issues on different devices
-    val copyHebrewStrings by registering(Copy::class) {
+    val copyHebrewStrings = task("copyHebrewStrings", type = Copy::class) {
         from("./src/main/res/values-he")
         into("./src/main/res/values-iw")
         include("**/*")
@@ -321,8 +319,40 @@ tasks {
     }
 }
 
+
 buildscript {
-    dependencies {
-        classpath(kotlinx.gradle)
+    repositories {
+        mavenCentral()
     }
+    dependencies {
+        classpath(kotlin("gradle-plugin", version = BuildPluginsVersion.KOTLIN))
+    }
+}
+
+
+// Git is needed in your system PATH for these commands to work.
+// If it's not installed, you can return a random value as a workaround
+fun getCommitCount(): String {
+    return runCommand("git rev-list --count HEAD")
+    // return "1"
+}
+
+fun getGitSha(): String {
+    return runCommand("git rev-parse --short HEAD")
+    // return "1"
+}
+
+fun getBuildTime(): String {
+    val df = SimpleDateFormat("yyyy-MM-dd'T'HH:mm'Z'")
+    df.timeZone = TimeZone.getTimeZone("UTC")
+    return df.format(Date())
+}
+
+fun runCommand(command: String): String {
+    val byteOut = ByteArrayOutputStream()
+    project.exec {
+        commandLine = command.split(" ")
+        standardOutput = byteOut
+    }
+    return String(byteOut.toByteArray()).trim()
 }
