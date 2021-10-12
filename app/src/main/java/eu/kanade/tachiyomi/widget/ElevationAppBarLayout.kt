@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.widget
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.os.Build
 import android.util.AttributeSet
 import android.widget.TextView
 import androidx.annotation.FloatRange
@@ -79,7 +80,12 @@ class ElevationAppBarLayout @JvmOverloads constructor(
                 addUpdateListener {
                     elevation = it.animatedValue as Float
                 }
-                start()
+                if (Build.VERSION.SDK_INT == Build.VERSION_CODES.LOLLIPOP) {
+                    // Delay to avoid crash
+                    post { start() }
+                } else {
+                    start()
+                }
             }
 
             updateBackgroundAlpha()
