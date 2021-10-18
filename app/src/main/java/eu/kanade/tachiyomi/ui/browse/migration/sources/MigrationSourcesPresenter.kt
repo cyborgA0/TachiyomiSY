@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.source.LocalSource
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.ui.base.presenter.BasePresenter
 import eu.kanade.tachiyomi.util.lang.combineLatest
+import exh.source.MERGED_SOURCE_ID
 import rx.android.schedulers.AndroidSchedulers
 import rx.schedulers.Schedulers
 import uy.kohesive.injekt.Injekt
@@ -42,7 +43,7 @@ class MigrationSourcesPresenter(
         val header = SelectionHeader()
         return library
             .groupBy { it.source }
-            .filterKeys { it != LocalSource.ID }
+            .filterKeys { it != LocalSource.ID /* SY --> */ && it != MERGED_SOURCE_ID /* SY <-- */ }
             .map {
                 val source = sourceManager.getOrStub(it.key)
                 SourceItem(source, it.value.size, header)
