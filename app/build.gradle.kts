@@ -53,8 +53,8 @@ android {
         }
         create("releaseTest") {
             applicationIdSuffix = ".rt"
-            //isMinifyEnabled = true
-            //isShrinkResources = true
+            // isMinifyEnabled = true
+            // isShrinkResources = true
             setProguardFiles(listOf(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"))
         }
         named("release") {
@@ -81,16 +81,18 @@ android {
     }
 
     packagingOptions {
-        resources.excludes.addAll(listOf(
-            "META-INF/DEPENDENCIES",
-            "LICENSE.txt",
-            "META-INF/LICENSE",
-            "META-INF/LICENSE.txt",
-            "META-INF/README.md",
-            "META-INF/NOTICE",
-            "META-INF/*.kotlin_module",
-            "META-INF/*.version",
-        ))
+        resources.excludes.addAll(
+            listOf(
+                "META-INF/DEPENDENCIES",
+                "LICENSE.txt",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/README.md",
+                "META-INF/NOTICE",
+                "META-INF/*.kotlin_module",
+                "META-INF/*.version",
+            )
+        )
     }
 
     dependenciesInfo {
@@ -245,8 +247,8 @@ dependencies {
     implementation("com.squareup.logcat:logcat:0.1")
 
     // Crash reports/analytics
-    //implementation("ch.acra:acra-http:5.8.1")
-    //"standardImplementation"("com.google.firebase:firebase-analytics:19.0.2")
+    // implementation("ch.acra:acra-http:5.8.1")
+    // "standardImplementation"("com.google.firebase:firebase-analytics:19.0.2")
 
     // Licenses
     implementation("com.mikepenz:aboutlibraries-core:${BuildPluginsVersion.ABOUTLIB_PLUGIN}")
@@ -273,7 +275,7 @@ dependencies {
     implementation("com.github.gabrielemariotti.changeloglib:changelog:2.1.0")
 
     // Text distance (EH)
-    implementation ("info.debatty:java-string-similarity:2.0.0")
+    implementation("info.debatty:java-string-similarity:2.0.0")
 
     // Firebase (EH)
     implementation("com.google.firebase:firebase-analytics-ktx:19.0.2")
@@ -321,7 +323,6 @@ tasks {
     }
 }
 
-
 buildscript {
     repositories {
         mavenCentral()
@@ -330,7 +331,6 @@ buildscript {
         classpath(kotlin("gradle-plugin", version = BuildPluginsVersion.KOTLIN))
     }
 }
-
 
 // Git is needed in your system PATH for these commands to work.
 // If it's not installed, you can return a random value as a workaround
