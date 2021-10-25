@@ -49,7 +49,7 @@
         <item name="android:textDirection">locale</item>
 
         <!-- Themes -->
-        <item name="android:windowLightStatusBar">@bool/lightStatusBar</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">@bool/lightStatusBar</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@color/surface_amoled</item>
         <item name="android:navigationBarDividerColor" tools:targetApi="o_mr1">@null</item>
@@ -296,12 +296,13 @@
 
     <!--== Splash Theme ==-->
     <style name="Theme.Tachiyomi.SplashScreen" parent="Theme.SplashScreen">
+        <item name="android:windowBackground">@drawable/ic_tachi_splash</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_tachi_splash</item>
         <item name="windowSplashScreenBackground">@color/splash</item>
         <item name="postSplashScreenTheme">@style/Theme.Tachiyomi</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
         <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
     </style>
 
