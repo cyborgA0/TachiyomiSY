@@ -107,6 +107,7 @@ fun Context.copyToClipboard(label: String, content: String) {
  * @return a notification to be displayed or updated.
  */
 fun Context.notificationBuilder(channelId: String, block: (NotificationCompat.Builder.() -> Unit)? = null): NotificationCompat.Builder {
+    @Suppress("DEPRECATION")
     val builder = NotificationCompat.Builder(this, channelId)
         .setColor(resources.getColor(R.color.accent_blue))
     if (block != null) {
@@ -158,6 +159,7 @@ fun Context.hasPermission(permission: String) = ContextCompat.checkSelfPermissio
     val tv = TypedValue()
     return if (this.theme.resolveAttribute(attr, tv, true)) {
         if (tv.resourceId != 0) {
+            @Suppress("DEPRECATION")
             resources.getColor(tv.resourceId)
         } else {
             tv.data
