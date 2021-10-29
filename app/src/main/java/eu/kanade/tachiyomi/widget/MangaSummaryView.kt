@@ -3,7 +3,9 @@ package eu.kanade.tachiyomi.widget
 import android.animation.AnimatorSet
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.PorterDuff
 import android.graphics.drawable.Animatable
+import android.os.Build
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.widget.FrameLayout
@@ -22,6 +24,7 @@ import eu.kanade.tachiyomi.databinding.MangaSummaryBinding
 import eu.kanade.tachiyomi.ui.manga.info.NamespaceTagsItem
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
 import eu.kanade.tachiyomi.util.system.copyToClipboard
+import eu.kanade.tachiyomi.util.system.getResourceColor
 import exh.metadata.metadata.base.RaisedSearchMetadata
 import exh.util.setChipsExtended
 import tachiyomi.source.Source
@@ -294,6 +297,13 @@ class MangaSummaryView @JvmOverloads constructor(
             binding.toggleMore
         ).forEach {
             it.setOnClickListener { expanded = !expanded }
+        }
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.LOLLIPOP) {
+            listOf(binding.descriptionScrim, binding.toggleMoreScrim)
+                .forEach {
+                    @Suppress("DEPRECATION")
+                    it.background.setColorFilter(rootView.context.getResourceColor(android.R.attr.colorBackground), PorterDuff.Mode.SRC_ATOP)
+                }
         }
     }
 }
