@@ -65,6 +65,8 @@ fun MaterialAlertDialogBuilder.setQuadStateMultiChoiceItems(
         binding.list.setOnScrollChangeListener { _, _, _, _, _ ->
             updateScrollIndicators()
         }
+    } else {
+        binding.list.viewTreeObserver.addOnScrollChangedListener(updateScrollIndicators)
     }
     binding.list.post {
         updateScrollIndicators()
