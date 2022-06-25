@@ -379,7 +379,7 @@ class MangaInfoHeaderAdapter(
                 @Suppress("DEPRECATION")
                 binding.backdropOverlay.background.setColorFilter(
                     view.context.getResourceColor(android.R.attr.colorBackground),
-                    PorterDuff.Mode.SRC_ATOP
+                    PorterDuff.Mode.SRC_ATOP,
                 )
             }
             binding.mangaSummarySection.description = manga.description

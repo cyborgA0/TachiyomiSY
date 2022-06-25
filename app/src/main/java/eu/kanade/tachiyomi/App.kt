@@ -76,7 +76,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.time.Duration.Companion.days
 
-class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
+open class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
 
     private val preferences: PreferencesHelper by injectLazy()
 
@@ -123,12 +123,16 @@ class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
                         setSmallIcon(R.drawable.ic_glasses_24dp)
                         setOngoing(true)
 
-                        val pendingIntent = PendingIntent.getBroadcast(
-                            this@App,
-                            0,
-                            Intent(ACTION_DISABLE_INCOGNITO_MODE),
-                            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE,
-                        )
+                        val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            PendingIntent.getBroadcast(
+                                this@App,
+                                0,
+                                Intent(ACTION_DISABLE_INCOGNITO_MODE),
+                                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE,
+                            )
+                        } else {
+                            TODO("VERSION.SDK_INT < M")
+                        }
                         setContentIntent(pendingIntent)
                     }
                     notificationManager.notify(Notifications.ID_INCOGNITO_MODE, notification)
