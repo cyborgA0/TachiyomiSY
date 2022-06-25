@@ -439,7 +439,9 @@ class MangaController :
         fab.setOnClickListener {
             val item = presenter.getNextUnreadChapter()
             if (item != null) {
-                openChapter(item.chapter, it)
+                openChapter(item.chapter)
+            } else {
+                view?.context?.toast(R.string.no_next_chapter)
             }
         }
     }
