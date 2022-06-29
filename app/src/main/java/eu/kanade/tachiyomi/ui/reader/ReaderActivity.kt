@@ -518,7 +518,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         // <-- EH
 
         val alpha = if (isNightMode()) 230 else 242 // 90% dark 95% light
-        val toolbarColor = ColorUtils.setAlphaComponent(getThemeColor(R.attr.colorToolbar), alpha)
+        val toolbarColor = ColorUtils.setAlphaComponent(getThemeColor(R.attr.colorSurface), alpha)
         listOf(
             binding.toolbarBottom,
             binding.leftChapter,

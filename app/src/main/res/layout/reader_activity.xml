@@ -403,7 +403,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="?attr/actionBarSize"
                 android:layout_gravity="bottom"
-                android:background="?attr/colorToolbar"
+                android:background="?attr/colorSurface"
                 android:clickable="true"
                 tools:ignore="KeyboardInaccessibleWidget">
 
