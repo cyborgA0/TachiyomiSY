@@ -7,11 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.content.res.Configuration
-import android.graphics.Bitmap
-import android.graphics.Color
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
+import android.graphics.*
 import android.graphics.drawable.RippleDrawable
 import android.net.Uri
 import android.os.Build
@@ -500,34 +496,25 @@ class ReaderActivity : BaseRxActivity<ReaderPresenter>() {
         updateBottomButtons()
 
         initDropdownMenu()
+        // <-- EH
 
-        val toolbarBackground = (binding.toolbar.background as MaterialShapeDrawable).apply {
-            elevation = resources.getDimension(R.dimen.m3_sys_elevation_level2)
-            alpha = if (isNightMode()) 230 else 242 // 90% dark 95% light
-        }
-        binding.toolbarBottom.background = toolbarBackground.copy(this@ReaderActivity)
-
-        binding.readerSeekbar.background = toolbarBackground.copy(this@ReaderActivity)?.apply {
-            setCornerSize(999F)
-        }
-        // SY -->
-        binding.readerSeekbarVert.background = toolbarBackground.copy(this@ReaderActivity)?.apply {
-            setCornerSize(999F)
-        }
-        // SY <--
-        listOf(binding.leftChapter, binding.rightChapter /* SY --> */, binding.belowChapter, binding.aboveChapter /* SY <-- */).forEach {
-            it.background = binding.readerSeekbar.background.copy(this)
-            it.foreground = RippleDrawable(
-                ColorStateList.valueOf(getThemeColor(android.R.attr.colorControlHighlight)),
-                null,
-                it.background,
-            )
+        val alpha = if (isNightMode()) 230 else 242 // 90% dark 95% light
+        val toolbarColor = ColorUtils.setAlphaComponent(getThemeColor(R.attr.colorSurface), alpha)
+        listOf(
+            binding.toolbarBottom,
+            binding.leftChapter,
+            binding.readerSeekbar,
+            binding.rightChapter,
+            // SY -->
+            binding.readerSeekbarVert,
+            binding.aboveChapter,
+            binding.belowChapter
+            // SY <--
+        ).forEach {
+            it.backgroundTintMode = PorterDuff.Mode.DST_IN
+            it.backgroundTintList = ColorStateList.valueOf(toolbarColor)
         }
 
-        val toolbarColor = ColorUtils.setAlphaComponent(
-            toolbarBackground.resolvedTintColor,
-            toolbarBackground.alpha,
-        )
         window.statusBarColor = toolbarColor
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             window.navigationBarColor = toolbarColor
