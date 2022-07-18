@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.*
-import android.graphics.drawable.RippleDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -86,7 +85,6 @@ import eu.kanade.tachiyomi.util.system.isNightMode
 import eu.kanade.tachiyomi.util.system.logcat
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
-import eu.kanade.tachiyomi.util.view.copy
 import eu.kanade.tachiyomi.util.view.popupMenu
 import eu.kanade.tachiyomi.util.view.setTooltip
 import eu.kanade.tachiyomi.widget.listener.SimpleAnimationListener
@@ -521,7 +519,7 @@ class ReaderActivity : BaseRxActivity<ReaderPresenter>() {
             // SY -->
             binding.readerSeekbarVert,
             binding.aboveChapter,
-            binding.belowChapter
+            binding.belowChapter,
             // SY <--
         ).forEach {
             it.backgroundTintMode = PorterDuff.Mode.DST_IN

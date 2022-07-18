@@ -23,8 +23,8 @@ import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.ui.base.controller.getMainAppBarHeight
 import eu.kanade.tachiyomi.ui.manga.MangaController
 import eu.kanade.tachiyomi.util.system.copyToClipboard
-import eu.kanade.tachiyomi.util.view.loadAutoPause
 import eu.kanade.tachiyomi.util.system.getResourceColor
+import eu.kanade.tachiyomi.util.view.loadAutoPause
 import exh.merged.sql.models.MergedMangaReference
 import exh.metadata.metadata.base.RaisedSearchMetadata
 import exh.source.MERGED_SOURCE_ID
@@ -380,7 +380,7 @@ class MangaInfoHeaderAdapter(
                 @Suppress("DEPRECATION")
                 binding.backdropOverlay.background.setColorFilter(
                     view.context.getResourceColor(android.R.attr.colorBackground),
-                    PorterDuff.Mode.SRC_ATOP
+                    PorterDuff.Mode.SRC_ATOP,
                 )
             }
             binding.mangaSummarySection.description = manga.description
