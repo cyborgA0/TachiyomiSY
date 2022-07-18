@@ -41,7 +41,7 @@ fun ImageView.loadAutoPause(
     builder: ImageRequest.Builder.() -> Unit = {},
 ) {
     load(data, loader) {
-        placeholder(ColorDrawable(context.getColor(R.color.cover_placeholder)))
+        placeholder(ColorDrawable(context.resources.getColor(R.color.cover_placeholder)))
         error(R.drawable.cover_error)
 
         // Build the original request so we can add on our success listener
