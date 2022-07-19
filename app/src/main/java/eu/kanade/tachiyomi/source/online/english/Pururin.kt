@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.source.online.english
 
 import android.content.Context
 import android.net.Uri
+import androidx.compose.runtime.Composable
 import androidx.core.net.toUri
 import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -11,13 +12,13 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.NamespaceSource
 import eu.kanade.tachiyomi.source.online.UrlImportableSource
-import eu.kanade.tachiyomi.ui.manga.MangaController
+import eu.kanade.tachiyomi.ui.manga.MangaScreenState
 import eu.kanade.tachiyomi.util.asJsoup
 import exh.metadata.metadata.PururinSearchMetadata
 import exh.metadata.metadata.base.RaisedSearchMetadata
 import exh.metadata.metadata.base.RaisedTag
 import exh.source.DelegatedHttpSource
-import exh.ui.metadata.adapters.PururinDescriptionAdapter
+import exh.ui.metadata.adapters.PururinDescription
 import exh.util.dropBlank
 import exh.util.trimAll
 import exh.util.urlImportFetchSearchManga
@@ -97,7 +98,7 @@ class Pururin(delegate: HttpSource, val context: Context) :
                             tags += RaisedTag(
                                 namespace,
                                 searchUrl.lastPathSegment!!.substringBefore("."),
-                                if (namespace != PururinSearchMetadata.TAG_NAMESPACE_CATEGORY) PururinSearchMetadata.TAG_TYPE_DEFAULT else RaisedSearchMetadata.TAG_TYPE_VIRTUAL
+                                if (namespace != PururinSearchMetadata.TAG_NAMESPACE_CATEGORY) PururinSearchMetadata.TAG_TYPE_DEFAULT else RaisedSearchMetadata.TAG_TYPE_VIRTUAL,
                             )
                         }
                     }
@@ -108,14 +109,15 @@ class Pururin(delegate: HttpSource, val context: Context) :
 
     override val matchingHosts = listOf(
         "pururin.io",
-        "www.pururin.io"
+        "www.pururin.io",
     )
 
     override suspend fun mapUrlToMangaUrl(uri: Uri): String {
         return "${PururinSearchMetadata.BASE_URL}/gallery/${uri.pathSegments.getOrNull(1)}/${uri.lastPathSegment}"
     }
 
-    override fun getDescriptionAdapter(controller: MangaController): PururinDescriptionAdapter {
-        return PururinDescriptionAdapter(controller)
+    @Composable
+    override fun DescriptionComposable(state: MangaScreenState.Success, openMetadataViewer: () -> Unit, search: (String) -> Unit) {
+        PururinDescription(state, openMetadataViewer)
     }
 }

@@ -3,10 +3,14 @@ package eu.kanade.tachiyomi.ui.library
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import eu.kanade.tachiyomi.data.database.models.Category
+import eu.kanade.domain.category.model.Category
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.databinding.LibraryCategoryBinding
+import eu.kanade.tachiyomi.ui.library.setting.DisplayModeSetting
 import eu.kanade.tachiyomi.widget.RecyclerViewPagerAdapter
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -17,43 +21,68 @@ import uy.kohesive.injekt.api.get
  */
 class LibraryAdapter(
     private val controller: LibraryController,
-    private val preferences: PreferencesHelper = Injekt.get()
+    private val preferences: PreferencesHelper = Injekt.get(),
 ) : RecyclerViewPagerAdapter() {
 
     /**
      * The categories to bind in the adapter.
      */
     var categories: List<Category> = emptyList()
-        // This setter helps to not refresh the adapter if the reference to the list doesn't change.
-        set(value) {
-            if (field !== value) {
-                field = value
-                notifyDataSetChanged()
-            }
-        }
+        private set
 
     /**
      * The number of manga in each category.
+     * List order must be the same as [categories]
      */
-    var itemsPerCategory: Map<Int, Int> = emptyMap()
-        set(value) {
-            if (field !== value) {
-                field = value
-                notifyDataSetChanged()
-            }
-        }
+    private var itemsPerCategory: List<Int> = emptyList()
 
     private var boundViews = arrayListOf<View>()
+
+    private val isPerCategory by lazy { preferences.categorizedDisplaySettings().get() }
+    private var currentDisplayMode = preferences.libraryDisplayMode().get()
+
+    init {
+        preferences.libraryDisplayMode()
+            .asFlow()
+            .drop(1)
+            .onEach {
+                currentDisplayMode = it
+            }
+            .launchIn(controller.viewScope)
+    }
+
+    /**
+     * Pair of category and size of category
+     */
+    fun updateCategories(new: List<Pair<Category, Int>>) {
+        var updated = false
+
+        val newCategories = new.map { it.first }
+        if (categories != newCategories) {
+            categories = newCategories
+            updated = true
+        }
+
+        val newItemsPerCategory = new.map { it.second }
+        if (itemsPerCategory !== newItemsPerCategory) {
+            itemsPerCategory = newItemsPerCategory
+            updated = true
+        }
+
+        if (updated) {
+            notifyDataSetChanged()
+        }
+    }
 
     /**
      * Creates a new view for this adapter.
      *
      * @return a new view.
      */
-    override fun createView(container: ViewGroup): View {
+    override fun inflateView(container: ViewGroup, viewType: Int): View {
         val binding = LibraryCategoryBinding.inflate(LayoutInflater.from(container.context), container, false)
         val view: LibraryCategoryView = binding.root
-        view.onCreate(controller, binding)
+        view.onCreate(controller, binding, viewType)
         return view
     }
 
@@ -95,10 +124,11 @@ class LibraryAdapter(
      * @return the title to display.
      */
     override fun getPageTitle(position: Int): CharSequence {
-        if (preferences.categoryNumberOfItems().get()) {
-            return categories[position].let { "${it.name} (${itemsPerCategory[it.id]})" }
+        return if (!preferences.categoryNumberOfItems().get()) {
+            categories[position].name
+        } else {
+            categories[position].let { "${it.name} (${itemsPerCategory[position]})" }
         }
-        return categories[position].name
     }
 
     /**
@@ -119,5 +149,27 @@ class LibraryAdapter(
                 view.onDestroy()
             }
         }
+    }
+
+    override fun getViewType(position: Int): Int {
+        val category = categories.getOrNull(position)
+        return if (isPerCategory && category?.id != 0L) {
+            if (DisplayModeSetting.fromFlag(category?.displayMode) == DisplayModeSetting.LIST) {
+                LIST_DISPLAY_MODE
+            } else {
+                GRID_DISPLAY_MODE
+            }
+        } else {
+            if (currentDisplayMode == DisplayModeSetting.LIST) {
+                LIST_DISPLAY_MODE
+            } else {
+                GRID_DISPLAY_MODE
+            }
+        }
+    }
+
+    companion object {
+        const val LIST_DISPLAY_MODE = 1
+        const val GRID_DISPLAY_MODE = 2
     }
 }

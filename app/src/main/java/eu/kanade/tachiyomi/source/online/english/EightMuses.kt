@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.source.online.english
 
 import android.content.Context
 import android.net.Uri
+import androidx.compose.runtime.Composable
 import androidx.core.net.toUri
 import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -10,12 +11,12 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.NamespaceSource
 import eu.kanade.tachiyomi.source.online.UrlImportableSource
-import eu.kanade.tachiyomi.ui.manga.MangaController
+import eu.kanade.tachiyomi.ui.manga.MangaScreenState
 import eu.kanade.tachiyomi.util.asJsoup
 import exh.metadata.metadata.EightMusesSearchMetadata
 import exh.metadata.metadata.base.RaisedTag
 import exh.source.DelegatedHttpSource
-import exh.ui.metadata.adapters.EightMusesDescriptionAdapter
+import exh.ui.metadata.adapters.EightMusesDescription
 import exh.util.urlImportFetchSearchManga
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -71,13 +72,13 @@ class EightMuses(delegate: HttpSource, val context: Context) :
             tags += RaisedTag(
                 EightMusesSearchMetadata.ARTIST_NAMESPACE,
                 breadcrumbs.selectFirst("li:nth-child(2) > a")!!.text(),
-                EightMusesSearchMetadata.TAG_TYPE_DEFAULT
+                EightMusesSearchMetadata.TAG_TYPE_DEFAULT,
             )
             tags += input.select(".album-tags a").map {
                 RaisedTag(
                     EightMusesSearchMetadata.TAGS_NAMESPACE,
                     it.text(),
-                    EightMusesSearchMetadata.TAG_TYPE_DEFAULT
+                    EightMusesSearchMetadata.TAG_TYPE_DEFAULT,
                 )
             }
         }
@@ -86,7 +87,7 @@ class EightMuses(delegate: HttpSource, val context: Context) :
     override val matchingHosts = listOf(
         "www.8muses.com",
         "comics.8muses.com",
-        "8muses.com"
+        "8muses.com",
     )
 
     override suspend fun mapUrlToMangaUrl(uri: Uri): String {
@@ -97,7 +98,8 @@ class EightMuses(delegate: HttpSource, val context: Context) :
         return "/comics/album/${path.joinToString("/")}"
     }
 
-    override fun getDescriptionAdapter(controller: MangaController): EightMusesDescriptionAdapter {
-        return EightMusesDescriptionAdapter(controller)
+    @Composable
+    override fun DescriptionComposable(state: MangaScreenState.Success, openMetadataViewer: () -> Unit, search: (String) -> Unit) {
+        EightMusesDescription(state, openMetadataViewer)
     }
 }

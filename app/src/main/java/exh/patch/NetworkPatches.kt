@@ -20,8 +20,8 @@ fun OkHttpClient.Builder.injectPatches(sourceIdProducer: () -> Long): OkHttpClie
 
 fun findAndApplyPatches(sourceId: Long): EHInterceptor {
     // TODO make it so captcha doesnt auto open in manga eden while applying universal interceptors
-    return if (Injekt.get<PreferencesHelper>().autoSolveCaptcha().get()) ((EH_INTERCEPTORS[sourceId].orEmpty()) + (EH_INTERCEPTORS[EH_UNIVERSAL_INTERCEPTOR].orEmpty())).merge()
-    else (EH_INTERCEPTORS[sourceId].orEmpty()).merge()
+    return if (Injekt.get<PreferencesHelper>().autoSolveCaptcha().get()) (EH_INTERCEPTORS[sourceId].orEmpty() + EH_INTERCEPTORS[EH_UNIVERSAL_INTERCEPTOR].orEmpty()).merge()
+    else EH_INTERCEPTORS[sourceId].orEmpty().merge()
 }
 
 fun List<EHInterceptor>.merge(): EHInterceptor {
@@ -35,6 +35,6 @@ fun List<EHInterceptor>.merge(): EHInterceptor {
 private const val EH_UNIVERSAL_INTERCEPTOR = -1L
 private val EH_INTERCEPTORS: Map<Long, List<EHInterceptor>> = mapOf(
     EH_UNIVERSAL_INTERCEPTOR to listOf(
-        CAPTCHA_DETECTION_PATCH // Auto captcha detection
-    )
+        CAPTCHA_DETECTION_PATCH, // Auto captcha detection
+    ),
 )

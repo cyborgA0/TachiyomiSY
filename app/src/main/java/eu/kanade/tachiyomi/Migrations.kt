@@ -5,16 +5,21 @@ import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import eu.kanade.tachiyomi.data.backup.BackupCreatorJob
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
+import eu.kanade.tachiyomi.data.preference.MANGA_NON_COMPLETED
 import eu.kanade.tachiyomi.data.preference.PreferenceKeys
+import eu.kanade.tachiyomi.data.preference.PreferenceValues
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.data.track.TrackManager
-import eu.kanade.tachiyomi.data.updater.UpdaterJob
+import eu.kanade.tachiyomi.data.updater.AppUpdateJob
 import eu.kanade.tachiyomi.extension.ExtensionUpdateJob
 import eu.kanade.tachiyomi.network.PREF_DOH_CLOUDFLARE
 import eu.kanade.tachiyomi.ui.library.LibrarySort
 import eu.kanade.tachiyomi.ui.library.setting.SortDirectionSetting
 import eu.kanade.tachiyomi.ui.library.setting.SortModeSetting
 import eu.kanade.tachiyomi.ui.reader.setting.OrientationType
+import eu.kanade.tachiyomi.util.preference.minusAssign
+import eu.kanade.tachiyomi.util.preference.plusAssign
+import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.widget.ExtendedNavigationView
 import uy.kohesive.injekt.Injekt
@@ -40,7 +45,7 @@ object Migrations {
 
             // Always set up background tasks to ensure they're running
             if (BuildConfig.INCLUDE_UPDATER) {
-                UpdaterJob.setupTask(context)
+                AppUpdateJob.setupTask(context)
             }
             ExtensionUpdateJob.setupTask(context)
             LibraryUpdateJob.setupTask(context)
@@ -51,10 +56,12 @@ object Migrations {
                 return false
             }
 
+            val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+
             if (oldVersion < 14) {
                 // Restore jobs after upgrading to Evernote's job scheduler.
                 if (BuildConfig.INCLUDE_UPDATER) {
-                    UpdaterJob.setupTask(context)
+                    AppUpdateJob.setupTask(context)
                 }
                 LibraryUpdateJob.setupTask(context)
             }
@@ -87,7 +94,7 @@ object Migrations {
             if (oldVersion < 43) {
                 // Restore jobs after migrating from Evernote's job scheduler to WorkManager.
                 if (BuildConfig.INCLUDE_UPDATER) {
-                    UpdaterJob.setupTask(context)
+                    AppUpdateJob.setupTask(context)
                 }
                 LibraryUpdateJob.setupTask(context)
                 BackupCreatorJob.setupTask(context)
@@ -97,8 +104,6 @@ object Migrations {
             }
             if (oldVersion < 44) {
                 // Reset sorting preference if using removed sort by source
-                val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-
                 val oldSortingMode = prefs.getInt(PreferenceKeys.librarySortingMode, 0)
 
                 @Suppress("DEPRECATION")
@@ -110,7 +115,6 @@ object Migrations {
             }
             if (oldVersion < 52) {
                 // Migrate library filters to tri-state versions
-                val prefs = PreferenceManager.getDefaultSharedPreferences(context)
                 fun convertBooleanPrefToTriState(key: String): Int {
                     val oldPrefValue = prefs.getBoolean(key, false)
                     return if (oldPrefValue) ExtendedNavigationView.Item.TriStateGroup.State.INCLUDE.value
@@ -127,7 +131,7 @@ object Migrations {
                     remove("pref_filter_completed_key")
                 }
             }
-            if (oldVersion < 53) {
+            if (oldVersion < 54) {
                 // Force MAL log out due to login flow change
                 // v52: switched from scraping to WebView
                 // v53: switched from WebView to OAuth
@@ -139,7 +143,6 @@ object Migrations {
             }
             if (oldVersion < 57) {
                 // Migrate DNS over HTTPS setting
-                val prefs = PreferenceManager.getDefaultSharedPreferences(context)
                 val wasDohEnabled = prefs.getBoolean("enable_doh", false)
                 if (wasDohEnabled) {
                     prefs.edit {
@@ -150,7 +153,6 @@ object Migrations {
             }
             if (oldVersion < 59) {
                 // Reset rotation to Free after replacing Lock
-                val prefs = PreferenceManager.getDefaultSharedPreferences(context)
                 if (prefs.contains("pref_rotation_type_key")) {
                     prefs.edit {
                         putInt("pref_rotation_type_key", 1)
@@ -159,12 +161,16 @@ object Migrations {
 
                 // Disable update check for Android 5.x users
                 if (BuildConfig.INCLUDE_UPDATER && Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) {
-                    UpdaterJob.cancelTask(context)
+                    AppUpdateJob.cancelTask(context)
                 }
             }
             if (oldVersion < 60) {
+                // Re-enable update check that was prevously accidentally disabled for M
+                if (BuildConfig.INCLUDE_UPDATER && Build.VERSION.SDK_INT == Build.VERSION_CODES.M) {
+                    AppUpdateJob.setupTask(context)
+                }
+
                 // Migrate Rotation and Viewer values to default values for viewer_flags
-                val prefs = PreferenceManager.getDefaultSharedPreferences(context)
                 val newOrientation = when (prefs.getInt("pref_rotation_type_key", 1)) {
                     1 -> OrientationType.FREE.flagValue
                     2 -> OrientationType.PORTRAIT.flagValue
@@ -193,8 +199,6 @@ object Migrations {
                 }
             }
             if (oldVersion < 64) {
-                val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-
                 val oldSortingMode = prefs.getInt(PreferenceKeys.librarySortingMode, 0)
                 val oldSortingDirection = prefs.getBoolean(PreferenceKeys.librarySortingDirection, true)
 
@@ -225,6 +229,55 @@ object Migrations {
                     putString(PreferenceKeys.librarySortingMode, newSortingMode.name)
                     putString(PreferenceKeys.librarySortingDirection, newSortingDirection.name)
                 }
+            }
+            if (oldVersion < 70) {
+                if (preferences.enabledLanguages().isSet()) {
+                    preferences.enabledLanguages() += "all"
+                }
+            }
+            if (oldVersion < 71) {
+                // Handle removed every 3, 4, 6, and 8 hour library updates
+                val updateInterval = preferences.libraryUpdateInterval().get()
+                if (updateInterval in listOf(3, 4, 6, 8)) {
+                    preferences.libraryUpdateInterval().set(12)
+                    LibraryUpdateJob.setupTask(context, 12)
+                }
+            }
+            if (oldVersion < 72) {
+                val oldUpdateOngoingOnly = prefs.getBoolean("pref_update_only_non_completed_key", true)
+                if (!oldUpdateOngoingOnly) {
+                    preferences.libraryUpdateMangaRestriction() -= MANGA_NON_COMPLETED
+                }
+            }
+            if (oldVersion < 75) {
+                val oldSecureScreen = prefs.getBoolean("secure_screen", false)
+                if (oldSecureScreen) {
+                    preferences.secureScreen().set(PreferenceValues.SecureScreenMode.ALWAYS)
+                }
+                if (DeviceUtil.isMiui && preferences.extensionInstaller().get() == PreferenceValues.ExtensionInstaller.PACKAGEINSTALLER) {
+                    preferences.extensionInstaller().set(PreferenceValues.ExtensionInstaller.LEGACY)
+                }
+            }
+            if (oldVersion < 76) {
+                BackupCreatorJob.setupTask(context)
+            }
+            if (oldVersion < 77) {
+                val oldReaderTap = prefs.getBoolean("reader_tap", false)
+                if (!oldReaderTap) {
+                    preferences.navigationModePager().set(5)
+                    preferences.navigationModeWebtoon().set(5)
+                }
+            }
+            if (oldVersion < 81) {
+                // Handle renamed enum values
+                @Suppress("DEPRECATION")
+                val newSortingMode = when (val oldSortingMode = preferences.librarySortingMode().get()) {
+                    SortModeSetting.LAST_CHECKED -> SortModeSetting.LAST_MANGA_UPDATE
+                    SortModeSetting.UNREAD -> SortModeSetting.UNREAD_COUNT
+                    SortModeSetting.DATE_FETCHED -> SortModeSetting.CHAPTER_FETCH_DATE
+                    else -> oldSortingMode
+                }
+                preferences.librarySortingMode().set(newSortingMode)
             }
 
             return true

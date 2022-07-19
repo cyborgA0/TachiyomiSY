@@ -9,7 +9,6 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.util.lang.withIOContext
 import exh.log.xLogD
 import exh.md.dto.AtHomeDto
-import exh.md.dto.ChapterDto
 import exh.md.service.MangaDexService
 import exh.md.utils.MdApi
 import exh.md.utils.MdUtil
@@ -26,6 +25,8 @@ class PageHandler(
     private val mangaPlusHandler: MangaPlusHandler,
     private val comikeyHandler: ComikeyHandler,
     private val bilibiliHandler: BilibiliHandler,
+    private val azukiHandler: AzukiHandler,
+    private val mangaHotHandler: MangaHotHandler,
     private val preferences: PreferencesHelper,
     private val mdList: MdList,
 ) {
@@ -34,17 +35,23 @@ class PageHandler(
         return withIOContext {
             val chapterResponse = service.viewChapter(MdUtil.getChapterId(chapter.url))
 
-            if (chapterResponse.data.attributes.externalUrl != null && chapterResponse.data.attributes.data.isEmpty()) {
+            if (chapterResponse.data.attributes.externalUrl != null && chapterResponse.data.attributes.pages == 0) {
                 when {
                     chapter.scanlator.equals("mangaplus", true) -> mangaPlusHandler.fetchPageList(
-                        chapterResponse.data.attributes.externalUrl
+                        chapterResponse.data.attributes.externalUrl,
                     )
-                    chapter.scanlator.equals("comikey", true) -> comikeyHandler.fetchPageList(
+                    /*chapter.scanlator.equals("comikey", true) -> comikeyHandler.fetchPageList(
                         chapterResponse.data.attributes.externalUrl
-                    )
+                    )*/
                     chapter.scanlator.equals("bilibili comics", true) -> bilibiliHandler.fetchPageList(
                         chapterResponse.data.attributes.externalUrl,
-                        chapterResponse.data.attributes.chapter.toString()
+                        chapterResponse.data.attributes.chapter.toString(),
+                    )
+                    chapter.scanlator.equals("azuki manga", true) -> azukiHandler.fetchPageList(
+                        chapterResponse.data.attributes.externalUrl,
+                    )
+                    chapter.scanlator.equals("mangahot", true) -> mangaHotHandler.fetchPageList(
+                        chapterResponse.data.attributes.externalUrl,
                     )
                     else -> throw Exception("${chapter.scanlator} not supported")
                 }
@@ -65,7 +72,7 @@ class PageHandler(
 
                 val atHomeResponse = service.getAtHomeServer(atHomeRequestUrl, headers)
 
-                pageListParse(chapterResponse, atHomeRequestUrl, atHomeResponse, dataSaver)
+                pageListParse(atHomeRequestUrl, atHomeResponse, dataSaver)
             }
         }
     }
@@ -85,16 +92,15 @@ class PageHandler(
     }
 
     private fun pageListParse(
-        chapterDto: ChapterDto,
         atHomeRequestUrl: String,
         atHomeDto: AtHomeDto,
         dataSaver: Boolean,
     ): List<Page> {
-        val hash = chapterDto.data.attributes.hash
+        val hash = atHomeDto.chapter.hash
         val pageArray = if (dataSaver) {
-            chapterDto.data.attributes.dataSaver.map { "/data-saver/$hash/$it" }
+            atHomeDto.chapter.dataSaver.map { "/data-saver/$hash/$it" }
         } else {
-            chapterDto.data.attributes.data.map { "/data/$hash/$it" }
+            atHomeDto.chapter.data.map { "/data/$hash/$it" }
         }
         val now = System.currentTimeMillis()
 
@@ -116,6 +122,14 @@ class PageHandler(
             }
             page.imageUrl?.contains("/bfs/comic/", true) == true -> {
                 bilibiliHandler.client.newCall(GET(page.imageUrl!!, bilibiliHandler.headers))
+                    .asObservableSuccess()
+            }
+            page.imageUrl?.contains("azuki", true) == true -> {
+                azukiHandler.client.newCall(GET(page.imageUrl!!, azukiHandler.headers))
+                    .asObservableSuccess()
+            }
+            page.imageUrl?.contains("mangahot", true) == true -> {
+                mangaHotHandler.client.newCall(GET(page.imageUrl!!, mangaHotHandler.headers))
                     .asObservableSuccess()
             }
             else -> superMethod(page)

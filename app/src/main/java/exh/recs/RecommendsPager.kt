@@ -1,6 +1,6 @@
 package exh.recs
 
-import eu.kanade.tachiyomi.data.database.models.Manga
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.POST
@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.ui.browse.source.browse.NoResultsException
 import eu.kanade.tachiyomi.ui.browse.source.browse.Pager
 import eu.kanade.tachiyomi.util.lang.withIOContext
+import eu.kanade.tachiyomi.util.system.logcat
 import exh.util.MangaType
 import exh.util.mangaType
 import kotlinx.serialization.decodeFromString
@@ -23,10 +24,10 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import logcat.LogPriority
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
-import timber.log.Timber
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -53,7 +54,7 @@ class MyAnimeList : API("https://api.jikan.moe/v3/") {
         val data = Json.decodeFromString<JsonObject>(body)
         val recommendations = data["recommendations"] as? JsonArray
         return recommendations?.filterIsInstance<JsonObject>()?.map { rec ->
-            Timber.tag("RECOMMENDATIONS").d("MYANIMELIST > RECOMMENDATION: %s", rec["title"]?.jsonPrimitive?.content.orEmpty())
+            logcat { "MYANIMELIST > RECOMMENDATION: " + rec["title"]?.jsonPrimitive?.content.orEmpty() }
             SManga.create().apply {
                 title = rec["title"]!!.jsonPrimitive.content
                 thumbnail_url = rec["image_url"]!!.jsonPrimitive.content
@@ -149,7 +150,8 @@ class Anilist : API("https://graphql.anilist.co/") {
                     |}
                 |}
             |}
-            |""".trimMargin()
+            |
+            """.trimMargin()
         val variables = buildJsonObject {
             put("search", search)
         }
@@ -171,14 +173,14 @@ class Anilist : API("https://graphql.anilist.co/") {
                 { languageContains(it.jsonObject, "romaji", search) },
                 { languageContains(it.jsonObject, "english", search) },
                 { languageContains(it.jsonObject, "native", search) },
-                { countOccurrence(it.jsonObject["synonyms"]!!.jsonArray, search) > 0 }
-            )
+                { countOccurrence(it.jsonObject["synonyms"]!!.jsonArray, search) > 0 },
+            ),
         ).last().jsonObject
 
         return result["recommendations"]?.jsonObject?.get("edges")?.jsonArray?.map {
             val rec = it.jsonObject["node"]!!.jsonObject["mediaRecommendation"]!!.jsonObject
             val recTitle = getTitle(rec)
-            Timber.tag("RECOMMENDATIONS").d("ANILIST > RECOMMENDATION: %s", recTitle)
+            logcat { "ANILIST > RECOMMENDATION: $recTitle" }
             SManga.create().apply {
                 title = recTitle
                 thumbnail_url = rec["coverImage"]!!.jsonObject["large"]!!.jsonPrimitive.content
@@ -192,7 +194,7 @@ class Anilist : API("https://graphql.anilist.co/") {
 open class RecommendsPager(
     private val manga: Manga,
     private val smart: Boolean = true,
-    private var preferredApi: API = API.MYANIMELIST
+    private var preferredApi: API = API.MYANIMELIST,
 ) : Pager() {
     override suspend fun requestNextPage() {
         if (smart) preferredApi = if (manga.mangaType() != MangaType.TYPE_MANGA) API.ANILIST else preferredApi
@@ -201,11 +203,11 @@ open class RecommendsPager(
 
         val recs = apiList.firstNotNullOfOrNull { (key, api) ->
             try {
-                val recs = api.getRecsBySearch(manga.originalTitle)
-                Timber.tag("RECOMMENDATIONS").d("%s > Results: %s", key, recs.count())
+                val recs = api.getRecsBySearch(manga.ogTitle)
+                logcat { key.toString() + " > Results: " + recs.count() }
                 recs
             } catch (e: Exception) {
-                Timber.tag("RECOMMENDATIONS").e("%s > Error: %s", key, e.message)
+                logcat(LogPriority.ERROR, e) { key.toString() }
                 null
             }
         }.orEmpty()
@@ -222,7 +224,7 @@ open class RecommendsPager(
     companion object {
         val API_MAP = mapOf(
             API.MYANIMELIST to MyAnimeList(),
-            API.ANILIST to Anilist()
+            API.ANILIST to Anilist(),
         )
 
         enum class API { MYANIMELIST, ANILIST }

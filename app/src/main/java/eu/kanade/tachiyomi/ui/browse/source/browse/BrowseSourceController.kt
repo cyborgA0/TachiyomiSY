@@ -13,18 +13,19 @@ import androidx.core.view.updatePadding
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.fredporciuncula.flow.preferences.Preference
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
 import com.google.android.material.snackbar.Snackbar
-import com.tfcporciuncula.flow.Preference
 import dev.chrisbanes.insetter.applyInsetter
 import eu.davidea.flexibleadapter.FlexibleAdapter
 import eu.davidea.flexibleadapter.items.IFlexible
+import eu.kanade.domain.category.model.Category
+import eu.kanade.domain.manga.model.Manga
+import eu.kanade.domain.manga.model.toDbManga
+import eu.kanade.domain.source.model.Source
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.models.Category
-import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
-import eu.kanade.tachiyomi.data.preference.asImmediateFlow
 import eu.kanade.tachiyomi.databinding.SourceControllerBinding
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.ConfigurableSource
@@ -35,17 +36,21 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.LoginSource
 import eu.kanade.tachiyomi.ui.base.controller.FabController
 import eu.kanade.tachiyomi.ui.base.controller.SearchableNucleusController
-import eu.kanade.tachiyomi.ui.base.controller.withFadeTransaction
+import eu.kanade.tachiyomi.ui.base.controller.pushController
 import eu.kanade.tachiyomi.ui.browse.extension.details.SourcePreferencesController
-import eu.kanade.tachiyomi.ui.browse.source.SourceController
-import eu.kanade.tachiyomi.ui.browse.source.browse.SourceFilterSheet.FilterNavigationView.Companion.MAX_SAVED_SEARCHES
+import eu.kanade.tachiyomi.ui.browse.source.SourcesController
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchController
 import eu.kanade.tachiyomi.ui.library.ChangeMangaCategoriesDialog
 import eu.kanade.tachiyomi.ui.library.setting.DisplayModeSetting
 import eu.kanade.tachiyomi.ui.main.MainActivity
+import eu.kanade.tachiyomi.ui.manga.AddDuplicateMangaDialog
 import eu.kanade.tachiyomi.ui.manga.MangaController
 import eu.kanade.tachiyomi.ui.more.MoreController
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
+import eu.kanade.tachiyomi.util.lang.launchIO
+import eu.kanade.tachiyomi.util.lang.launchUI
+import eu.kanade.tachiyomi.util.lang.withUIContext
+import eu.kanade.tachiyomi.util.preference.asImmediateFlow
 import eu.kanade.tachiyomi.util.system.connectivityManager
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toast
@@ -68,9 +73,6 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import uy.kohesive.injekt.injectLazy
 
-/**
- * Controller to manage the catalogues available in the app.
- */
 open class BrowseSourceController(bundle: Bundle) :
     SearchableNucleusController<SourceControllerBinding, BrowseSourcePresenter>(bundle),
     FabController,
@@ -80,18 +82,18 @@ open class BrowseSourceController(bundle: Bundle) :
     ChangeMangaCategoriesDialog.Listener {
 
     constructor(
-        source: CatalogueSource,
-        searchQuery: String? = null,
+        sourceId: Long,
+        query: String? = null,
         // SY -->
-        smartSearchConfig: SourceController.SmartSearchConfig? = null,
-        filterList: String? = null
+        smartSearchConfig: SourcesController.SmartSearchConfig? = null,
+        savedSearch: Long? = null,
+        filterList: String? = null,
         // SY <--
     ) : this(
         Bundle().apply {
-            putLong(SOURCE_ID_KEY, source.id)
-
-            if (searchQuery != null) {
-                putString(SEARCH_QUERY_KEY, searchQuery)
+            putLong(SOURCE_ID_KEY, sourceId)
+            if (query != null) {
+                putString(SEARCH_QUERY_KEY, query)
             }
 
             // SY -->
@@ -99,11 +101,47 @@ open class BrowseSourceController(bundle: Bundle) :
                 putParcelable(SMART_SEARCH_CONFIG_KEY, smartSearchConfig)
             }
 
+            if (savedSearch != null) {
+                putLong(SAVED_SEARCH_CONFIG_KEY, savedSearch)
+            }
+
             if (filterList != null) {
                 putString(FILTERS_CONFIG_KEY, filterList)
             }
             // SY <--
-        }
+        },
+    )
+
+    constructor(
+        source: CatalogueSource,
+        query: String? = null,
+        // SY -->
+        smartSearchConfig: SourcesController.SmartSearchConfig? = null,
+        savedSearch: Long? = null,
+        filterList: String? = null,
+        // SY <--
+    ) : this(
+        source.id,
+        query,
+        smartSearchConfig,
+        savedSearch,
+        filterList,
+    )
+
+    constructor(
+        source: Source,
+        query: String? = null,
+        // SY -->
+        smartSearchConfig: SourcesController.SmartSearchConfig? = null,
+        savedSearch: Long? = null,
+        filterList: String? = null,
+        // SY <--
+    ) : this(
+        source.id,
+        query,
+        smartSearchConfig,
+        savedSearch,
+        filterList,
     )
 
     private val preferences: PreferencesHelper by injectLazy()
@@ -111,7 +149,8 @@ open class BrowseSourceController(bundle: Bundle) :
     /**
      * Adapter containing the list of manga from the catalogue.
      */
-    /* SY --> */ protected /* SY <-- */ var adapter: FlexibleAdapter<IFlexible<*>>? = null
+    /* SY --> */
+    protected /* SY <-- */ var adapter: FlexibleAdapter<IFlexible<*>>? = null
 
     private var actionFab: ExtendedFloatingActionButton? = null
     private var actionFabScrollListener: RecyclerView.OnScrollListener? = null
@@ -154,7 +193,8 @@ open class BrowseSourceController(bundle: Bundle) :
         return BrowseSourcePresenter(
             args.getLong(SOURCE_ID_KEY),
             args.getString(SEARCH_QUERY_KEY),
-            filters = args.getString(FILTERS_CONFIG_KEY)
+            filters = args.getString(FILTERS_CONFIG_KEY),
+            savedSearch = args.getLong(SAVED_SEARCH_CONFIG_KEY, 0).takeUnless { it == 0L },
         )
         // SY <--
     }
@@ -179,6 +219,10 @@ open class BrowseSourceController(bundle: Bundle) :
         // SY <--
     }
 
+    fun setSavedSearches(savedSearches: List<EXHSavedSearch>) {
+        filterSheet?.setSavedSearches(savedSearches)
+    }
+
     open fun initFilterSheet() {
         if (presenter.sourceFilters.isEmpty()) {
             // SY -->
@@ -191,7 +235,7 @@ open class BrowseSourceController(bundle: Bundle) :
             // SY -->
             this,
             presenter.source,
-            presenter.loadSearches(),
+            emptyList(),
             // SY <--
             onFilterClicked = {
                 showProgressBar()
@@ -206,102 +250,82 @@ open class BrowseSourceController(bundle: Bundle) :
             },
             // EXH -->
             onSaveClicked = {
-                filterSheet?.context?.let {
-                    var searchName = ""
-                    MaterialAlertDialogBuilder(it)
-                        .setTitle(R.string.save_search)
-                        .setTextInput(hint = it.getString(R.string.save_search_hint)) { input ->
-                            searchName = input
-                        }
-                        .setPositiveButton(R.string.action_save) { _, _ ->
-                            val oldSavedSearches = presenter.loadSearches()
-                            if (searchName.isNotBlank() &&
-                                oldSavedSearches.size < MAX_SAVED_SEARCHES
-                            ) {
-                                val newSearches = oldSavedSearches + EXHSavedSearch(
-                                    searchName.trim(),
-                                    presenter.query,
-                                    presenter.sourceFilters
-                                )
-                                presenter.saveSearches(newSearches)
-                                filterSheet?.setSavedSearches(newSearches)
+                viewScope.launchUI {
+                    filterSheet?.context?.let {
+                        val names = presenter.loadSearches().map { it.name }
+                        var searchName = ""
+                        MaterialAlertDialogBuilder(it)
+                            .setTitle(R.string.save_search)
+                            .setTextInput(hint = it.getString(R.string.save_search_hint)) { input ->
+                                searchName = input
                             }
+                            .setPositiveButton(R.string.action_save) { _, _ ->
+                                if (searchName.isNotBlank() && searchName !in names) {
+                                    presenter.saveSearch(searchName.trim(), presenter.query, presenter.sourceFilters)
+                                } else {
+                                    it.toast(R.string.save_search_invalid_name)
+                                }
+                            }
+                            .setNegativeButton(R.string.action_cancel, null)
+                            .show()
+                    }
+                }
+            },
+            onSavedSearchClicked = { idOfSearch ->
+                viewScope.launchUI {
+                    val search = presenter.loadSearch(idOfSearch)
+
+                    if (search == null) {
+                        filterSheet?.context?.let {
+                            MaterialAlertDialogBuilder(it)
+                                .setTitle(R.string.save_search_failed_to_load)
+                                .setMessage(R.string.save_search_failed_to_load_message)
+                                .show()
                         }
-                        .setNegativeButton(R.string.action_cancel, null)
-                        .show()
+                        return@launchUI
+                    }
+
+                    if (search.filterList == null) {
+                        activity?.toast(R.string.save_search_invalid)
+                        return@launchUI
+                    }
+
+                    presenter.sourceFilters = FilterList(search.filterList)
+                    filterSheet?.setFilters(presenter.filterItems)
+                    val allDefault = presenter.sourceFilters == presenter.source.getFilterList()
+
+                    showProgressBar()
+                    adapter?.clear()
+                    filterSheet?.dismiss()
+                    presenter.restartPager(search.query, if (allDefault) FilterList() else presenter.sourceFilters)
+                    activity?.invalidateOptionsMenu()
                 }
             },
-            onSavedSearchClicked = cb@{ indexToSearch ->
-                val savedSearches = presenter.loadSearches()
-
-                val search = savedSearches.getOrNull(indexToSearch)
-
-                if (search == null) {
-                    filterSheet?.context?.let {
-                        MaterialAlertDialogBuilder(it)
-                            .setTitle(R.string.save_search_failed_to_load)
-                            .setMessage(R.string.save_search_failed_to_load_message)
-                            .show()
-                    }
-                    return@cb
-                }
-
-                if (search.filterList == null) {
-                    activity?.toast(R.string.save_search_invalid)
-                    return@cb
-                }
-
-                presenter.sourceFilters = FilterList(search.filterList)
-                filterSheet?.setFilters(presenter.filterItems)
-                val allDefault = presenter.sourceFilters == presenter.source.getFilterList()
-
-                showProgressBar()
-                adapter?.clear()
-                filterSheet?.dismiss()
-                presenter.restartPager(search.query, if (allDefault) FilterList() else presenter.sourceFilters)
-                activity?.invalidateOptionsMenu()
-            },
-            onSavedSearchDeleteClicked = cb@{ indexToDelete, name ->
-                val savedSearches = presenter.loadSearches()
-
-                val search = savedSearches.getOrNull(indexToDelete)
-
-                if (search == null || search.name != name) {
-                    filterSheet?.context?.let {
-                        MaterialAlertDialogBuilder(it)
-                            .setTitle(R.string.save_search_failed_to_delete)
-                            .setMessage(R.string.save_search_failed_to_delete_message)
-                            .show()
-                    }
-                    return@cb
-                }
-
+            onSavedSearchDeleteClicked = { idToDelete, name ->
                 filterSheet?.context?.let {
                     MaterialAlertDialogBuilder(it)
                         .setTitle(R.string.save_search_delete)
-                        .setMessage(it.getString(R.string.save_search_delete_message, search.name))
+                        .setMessage(it.getString(R.string.save_search_delete_message, name))
                         .setPositiveButton(R.string.action_cancel, null)
                         .setNegativeButton(android.R.string.ok) { _, _ ->
-                            val newSearches = savedSearches.filterIndexed { index, _ ->
-                                index != indexToDelete
-                            }
-                            presenter.saveSearches(newSearches)
-                            filterSheet?.setSavedSearches(newSearches)
+                            presenter.deleteSearch(idToDelete)
                         }
                         .show()
                 }
-            }
+            },
             // EXH <--
         )
+        launchUI {
+            filterSheet?.setSavedSearches(presenter.loadSearches())
+        }
         filterSheet?.setFilters(presenter.filterItems)
 
-        // TODO: [ExtendedFloatingActionButton] hide/show methods don't work properly
-        filterSheet?.setOnShowListener { actionFab?.isVisible = false }
-        filterSheet?.setOnDismissListener { actionFab?.isVisible = true }
+        filterSheet?.setOnShowListener { actionFab?.hide() }
+        filterSheet?.setOnDismissListener { actionFab?.show() }
 
         actionFab?.setOnClickListener { filterSheet?.show() }
 
-        actionFab?.isVisible = true
+        actionFab?.show()
     }
 
     override fun configureFab(fab: ExtendedFloatingActionButton) {
@@ -311,7 +335,7 @@ open class BrowseSourceController(bundle: Bundle) :
         fab.setIconResource(R.drawable.ic_filter_list_24dp)
 
         // Controlled by initFilterSheet()
-        fab.isVisible = false
+        fab.hide()
         initFilterSheet()
     }
 
@@ -359,7 +383,7 @@ open class BrowseSourceController(bundle: Bundle) :
                 (layoutManager as GridLayoutManager).spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
                     override fun getSpanSize(position: Int): Int {
                         return when (adapter?.getItemViewType(position)) {
-                            R.layout.source_compact_grid_item, R.layout.source_comfortable_grid_item, null -> 1
+                            R.layout.source_compact_grid_item, R.layout.source_comfortable_grid_item -> 1
                             else -> spanCount
                         }
                     }
@@ -406,16 +430,13 @@ open class BrowseSourceController(bundle: Bundle) :
                 }
 
                 true
-            }
+            },
         )
 
         val displayItem = when (preferences.sourceDisplayMode().get()) {
-            DisplayModeSetting.COMPACT_GRID -> R.id.action_compact_grid
-            DisplayModeSetting.COMFORTABLE_GRID -> R.id.action_comfortable_grid
-            // SY -->
-            DisplayModeSetting.NO_TITLE_GRID -> R.id.action_no_title_grid
-            // SY <--
             DisplayModeSetting.LIST -> R.id.action_list
+            DisplayModeSetting.COMFORTABLE_GRID -> R.id.action_comfortable_grid
+            else -> R.id.action_compact_grid
         }
         menu.findItem(displayItem).isChecked = true
         // SY -->
@@ -448,9 +469,6 @@ open class BrowseSourceController(bundle: Bundle) :
             R.id.action_search -> expandActionViewFromInteraction = true
             R.id.action_compact_grid -> setDisplayMode(DisplayModeSetting.COMPACT_GRID)
             R.id.action_comfortable_grid -> setDisplayMode(DisplayModeSetting.COMFORTABLE_GRID)
-            // SY -->
-            R.id.action_no_title_grid -> setDisplayMode(DisplayModeSetting.NO_TITLE_GRID)
-            // SY <--
             R.id.action_list -> setDisplayMode(DisplayModeSetting.LIST)
             R.id.action_open_in_web_view -> openInWebView()
             // SY -->
@@ -475,9 +493,7 @@ open class BrowseSourceController(bundle: Bundle) :
 
     // SY -->
     private fun openSourceSettings() {
-        router.pushController(
-            SourcePreferencesController(presenter.source.id).withFadeTransaction()
-        )
+        router.pushController(SourcePreferencesController(presenter.source.id))
     }
     // SY <--
 
@@ -517,6 +533,7 @@ open class BrowseSourceController(bundle: Bundle) :
                         when (filter) {
                             is Filter.TriState -> filter.state = 1
                             is Filter.CheckBox -> filter.state = true
+                            else -> {}
                         }
                         filterList = presenter.sourceFilters
                         break@filter
@@ -567,13 +584,14 @@ open class BrowseSourceController(bundle: Bundle) :
      *
      * @param error the error received.
      */
-    /* SY --> */ open /* SY <-- */fun onAddPageError(error: Throwable) {
+    /* SY --> */
+    open /* SY <-- */fun onAddPageError(error: Throwable) {
         // SY -->
         xLogW("> Failed to load next catalogue page!", error)
         xLogW(
             "> (source.id: %s, source.name: %s)",
             presenter.source.id,
-            presenter.source.name
+            presenter.source.name,
         )
         // SY <--
 
@@ -597,13 +615,13 @@ open class BrowseSourceController(bundle: Bundle) :
         if (adapter.isEmpty) {
             val actions = if (presenter.source is LocalSource) {
                 listOf(
-                    EmptyView.Action(R.string.local_source_help_guide, R.drawable.ic_help_24dp) { openLocalSourceHelpGuide() }
+                    EmptyView.Action(R.string.local_source_help_guide, R.drawable.ic_help_24dp) { openLocalSourceHelpGuide() },
                 )
             } else {
                 listOf(
                     EmptyView.Action(R.string.action_retry, R.drawable.ic_refresh_24dp, retryAction),
                     EmptyView.Action(R.string.action_open_in_web_view, R.drawable.ic_public_24dp) { openInWebView() },
-                    EmptyView.Action(R.string.label_help, R.drawable.ic_help_24dp) { activity?.openInBrowser(MoreController.URL_HELP) }
+                    EmptyView.Action(R.string.label_help, R.drawable.ic_help_24dp) { activity?.openInBrowser(MoreController.URL_HELP) },
                 )
             }
 
@@ -706,7 +724,7 @@ open class BrowseSourceController(bundle: Bundle) :
 
         adapter.allBoundViewHolders.forEach { holder ->
             val item = adapter.getItem(holder.bindingAdapterPosition) as? SourceItem
-            if (item != null && item.manga.id!! == manga.id!!) {
+            if (item != null && item.manga.id == manga.id) {
                 return holder as SourceHolder<*>
             }
         }
@@ -742,10 +760,10 @@ open class BrowseSourceController(bundle: Bundle) :
         val item = adapter?.getItem(position) as? SourceItem ?: return false
         router.pushController(
             MangaController(
-                item.manga,
+                item.manga.id,
                 true,
-                args.getParcelable(MangaController.SMART_SEARCH_CONFIG_EXTRA)
-            ).withFadeTransaction()
+                args.getParcelable(MangaController.SMART_SEARCH_CONFIG_EXTRA),
+            ),
         )
         return false
     }
@@ -762,57 +780,81 @@ open class BrowseSourceController(bundle: Bundle) :
     override fun onItemLongClick(position: Int) {
         val activity = activity ?: return
         val manga = (adapter?.getItem(position) as? SourceItem?)?.manga ?: return
+        launchIO {
+            val duplicateManga = presenter.getDuplicateLibraryManga(manga)
 
-        if (manga.favorite) {
-            MaterialAlertDialogBuilder(activity)
-                .setTitle(manga.title)
-                .setItems(arrayOf(activity.getString(R.string.remove_from_library))) { _, which ->
-                    when (which) {
-                        0 -> {
-                            presenter.changeMangaFavorite(manga)
-                            adapter?.notifyItemChanged(position)
-                            activity.toast(activity.getString(R.string.manga_removed_library))
+            withUIContext {
+                if (manga.favorite) {
+                    MaterialAlertDialogBuilder(activity)
+                        .setTitle(manga.title)
+                        .setItems(arrayOf(activity.getString(R.string.remove_from_library))) { _, which ->
+                            when (which) {
+                                0 -> {
+                                    presenter.changeMangaFavorite(manga.toDbManga())
+                                    adapter?.notifyItemChanged(position)
+                                    activity.toast(activity.getString(R.string.manga_removed_library))
+                                }
+                            }
                         }
+                        .show()
+                } else {
+                    if (duplicateManga != null) {
+                        AddDuplicateMangaDialog(this@BrowseSourceController, duplicateManga) {
+                            addToLibrary(
+                                manga,
+                                position,
+                            )
+                        }
+                            .showDialog(router)
+                    } else {
+                        addToLibrary(manga, position)
                     }
                 }
-                .show()
-        } else {
+            }
+        }
+    }
+
+    private fun addToLibrary(newManga: Manga, position: Int) {
+        val activity = activity ?: return
+        launchIO {
             val categories = presenter.getCategories()
             val defaultCategoryId = preferences.defaultCategory()
-            val defaultCategory = categories.find { it.id == defaultCategoryId }
+            val defaultCategory = categories.find { it.id == defaultCategoryId.toLong() }
 
-            when {
-                // Default category set
-                defaultCategory != null -> {
-                    presenter.moveMangaToCategory(manga, defaultCategory)
+            withUIContext {
+                when {
+                    // Default category set
+                    defaultCategory != null -> {
+                        presenter.moveMangaToCategory(newManga.toDbManga(), defaultCategory)
 
-                    presenter.changeMangaFavorite(manga)
-                    adapter?.notifyItemChanged(position)
-                    activity.toast(activity.getString(R.string.manga_added_library))
-                }
+                        presenter.changeMangaFavorite(newManga.toDbManga())
+                        adapter?.notifyItemChanged(position)
+                        activity.toast(activity.getString(R.string.manga_added_library))
+                    }
 
-                // Automatic 'Default' or no categories
-                defaultCategoryId == 0 || categories.isEmpty() -> {
-                    presenter.moveMangaToCategory(manga, null)
+                    // Automatic 'Default' or no categories
+                    defaultCategoryId == 0 || categories.isEmpty() -> {
+                        presenter.moveMangaToCategory(newManga.toDbManga(), null)
 
-                    presenter.changeMangaFavorite(manga)
-                    adapter?.notifyItemChanged(position)
-                    activity.toast(activity.getString(R.string.manga_added_library))
-                }
+                        presenter.changeMangaFavorite(newManga.toDbManga())
+                        adapter?.notifyItemChanged(position)
+                        activity.toast(activity.getString(R.string.manga_added_library))
+                    }
 
-                // Choose a category
-                else -> {
-                    val ids = presenter.getMangaCategoryIds(manga)
-                    val preselected = categories.map {
-                        if (it.id in ids) {
-                            QuadStateTextView.State.CHECKED.ordinal
-                        } else {
-                            QuadStateTextView.State.UNCHECKED.ordinal
-                        }
-                    }.toTypedArray()
+                    // Choose a category
+                    else -> {
+                        val ids = presenter.getMangaCategoryIds(newManga)
+                        val preselected = categories.map {
+                            if (it.id in ids) {
+                                QuadStateTextView.State.CHECKED.ordinal
+                            } else {
+                                QuadStateTextView.State.UNCHECKED.ordinal
+                            }
+                        }.toTypedArray()
 
-                    ChangeMangaCategoriesDialog(this, listOf(manga), categories, preselected)
-                        .showDialog(router)
+                        ChangeMangaCategoriesDialog(this@BrowseSourceController, listOf(newManga), categories, preselected)
+                            .showDialog(router)
+                    }
                 }
             }
         }
@@ -827,8 +869,8 @@ open class BrowseSourceController(bundle: Bundle) :
     override fun updateCategoriesForMangas(mangas: List<Manga>, addCategories: List<Category>, removeCategories: List<Category>) {
         val manga = mangas.firstOrNull() ?: return
 
-        presenter.changeMangaFavorite(manga)
-        presenter.updateMangaCategories(manga, addCategories)
+        presenter.changeMangaFavorite(manga.toDbManga())
+        presenter.updateMangaCategories(manga.toDbManga(), addCategories)
 
         val position = adapter?.currentItems?.indexOfFirst { it -> (it as SourceItem).manga.id == manga.id }
         if (position != null) {
@@ -843,6 +885,7 @@ open class BrowseSourceController(bundle: Bundle) :
 
         // SY -->
         const val SMART_SEARCH_CONFIG_KEY = "smartSearchConfig"
+        const val SAVED_SEARCH_CONFIG_KEY = "savedSearch"
         const val FILTERS_CONFIG_KEY = "filters"
         // SY <--
     }

@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi
 
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.app.Application
 import android.app.PendingIntent
@@ -10,6 +11,7 @@ import android.content.IntentFilter
 import android.graphics.Color
 import android.os.Build
 import android.os.Environment
+import android.os.Looper
 import android.webkit.WebView
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.app.NotificationManagerCompat
@@ -22,6 +24,8 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
+import coil.disk.DiskCache
+import coil.util.DebugLogger
 import com.elvishew.xlog.LogConfiguration
 import com.elvishew.xlog.LogLevel
 import com.elvishew.xlog.XLog
@@ -34,33 +38,38 @@ import com.google.firebase.analytics.ktx.analytics
 import com.google.firebase.ktx.Firebase
 import com.ms_square.debugoverlay.DebugOverlay
 import com.ms_square.debugoverlay.modules.FpsModule
-import eu.kanade.tachiyomi.data.coil.ByteBufferFetcher
+import eu.kanade.domain.DomainModule
+import eu.kanade.domain.SYDomainModule
+import eu.kanade.tachiyomi.data.coil.DomainMangaKeyer
 import eu.kanade.tachiyomi.data.coil.MangaCoverFetcher
+import eu.kanade.tachiyomi.data.coil.MangaCoverKeyer
+import eu.kanade.tachiyomi.data.coil.MangaKeyer
 import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.data.preference.PreferenceValues
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
-import eu.kanade.tachiyomi.data.preference.asImmediateFlow
 import eu.kanade.tachiyomi.network.NetworkHelper
-import eu.kanade.tachiyomi.ui.security.SecureActivityDelegate
+import eu.kanade.tachiyomi.ui.base.delegate.SecureActivityDelegate
+import eu.kanade.tachiyomi.util.preference.asImmediateFlow
 import eu.kanade.tachiyomi.util.system.AuthenticatorUtil
+import eu.kanade.tachiyomi.util.system.WebViewUtil
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
+import eu.kanade.tachiyomi.util.system.logcat
 import eu.kanade.tachiyomi.util.system.notification
 import exh.debug.DebugToggles
 import exh.log.CrashlyticsPrinter
 import exh.log.EHDebugModeOverlay
 import exh.log.EHLogLevel
 import exh.log.EnhancedFilePrinter
-import exh.log.XLogTree
+import exh.log.XLogLogcatLogger
 import exh.log.xLogD
 import exh.log.xLogE
 import exh.syDebugVersion
-import exh.util.days
-import io.realm.Realm
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import logcat.LogPriority
+import logcat.LogcatLogger
 import org.conscrypt.Conscrypt
-import timber.log.Timber
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -68,18 +77,20 @@ import java.io.File
 import java.security.Security
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.time.Duration.Companion.days
 
-open class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
+class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
 
     private val preferences: PreferencesHelper by injectLazy()
 
     private val disableIncognitoReceiver = DisableIncognitoReceiver()
 
+    @SuppressLint("LaunchActivityFromNotification")
     override fun onCreate() {
         super<Application>.onCreate()
         // if (BuildConfig.DEBUG) Timber.plant(Timber.DebugTree())
         setupExhLogging() // EXH logging
-        Timber.plant(XLogTree()) // SY Redirect Timber to XLog
+        LogcatLogger.install(XLogLogcatLogger()) // SY Redirect Logcat to XLog
         if (!BuildConfig.DEBUG) addAnalytics()
 
         // TLS 1.3 support for Android < 10
@@ -94,9 +105,12 @@ open class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
         }
 
         Injekt.importModule(AppModule(this))
+        Injekt.importModule(DomainModule())
+        // SY -->
+        Injekt.importModule(SYDomainModule())
+        // SY <--
 
         setupNotificationChannels()
-        Realm.init(this)
         if ((BuildConfig.DEBUG || BuildConfig.BUILD_TYPE == "releaseTest") && DebugToggles.ENABLE_DEBUG_OVERLAY.enabled) {
             setupDebugOverlay()
         }
@@ -119,7 +133,7 @@ open class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
                             this@App,
                             0,
                             Intent(ACTION_DISABLE_INCOGNITO_MODE),
-                            PendingIntent.FLAG_ONE_SHOT
+                            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE,
                         )
                         setContentIntent(pendingIntent)
                     }
@@ -138,26 +152,38 @@ open class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
                         PreferenceValues.ThemeMode.light -> AppCompatDelegate.MODE_NIGHT_NO
                         PreferenceValues.ThemeMode.dark -> AppCompatDelegate.MODE_NIGHT_YES
                         PreferenceValues.ThemeMode.system -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
-                    }
+                    },
                 )
             }.launchIn(ProcessLifecycleOwner.get().lifecycleScope)
+
+        /*if (!LogcatLogger.isInstalled && preferences.verboseLogging()) {
+            LogcatLogger.install(AndroidLogcatLogger(LogPriority.VERBOSE))
+        }*/
     }
 
     override fun newImageLoader(): ImageLoader {
         return ImageLoader.Builder(this).apply {
-            componentRegistry {
+            val callFactoryInit = { Injekt.get<NetworkHelper>().client }
+            val diskCacheInit = { CoilDiskCache.get(this@App) }
+            components {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    add(ImageDecoderDecoder(this@App))
+                    add(ImageDecoderDecoder.Factory())
                 } else {
-                    add(GifDecoder())
+                    add(GifDecoder.Factory())
                 }
-                add(TachiyomiImageDecoder(this@App.resources))
-                add(ByteBufferFetcher())
-                add(MangaCoverFetcher())
+                add(TachiyomiImageDecoder.Factory())
+                add(MangaCoverFetcher.Factory(lazy(callFactoryInit), lazy(diskCacheInit)))
+                add(MangaCoverFetcher.DomainMangaFactory(lazy(callFactoryInit), lazy(diskCacheInit)))
+                add(MangaCoverFetcher.MangaCoverFactory(lazy(callFactoryInit), lazy(diskCacheInit)))
+                add(MangaKeyer())
+                add(DomainMangaKeyer())
+                add(MangaCoverKeyer())
             }
-            okHttpClient(Injekt.get<NetworkHelper>().coilClient)
+            callFactory(callFactoryInit)
+            diskCache(diskCacheInit)
             crossfade((300 * this@App.animatorDurationScale).toInt())
             allowRgb565(getSystemService<ActivityManager>()!!.isLowRamDevice)
+            if (preferences.verboseLogging()) logger(DebugLogger())
         }.build()
     }
 
@@ -173,8 +199,33 @@ open class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
         }
     }
 
+    override fun getPackageName(): String {
+        // This causes freezes in Android 6/7 for some reason
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                // Override the value passed as X-Requested-With in WebView requests
+                val stackTrace = Looper.getMainLooper().thread.stackTrace
+                val chromiumElement = stackTrace.find {
+                    it.className.equals(
+                        "org.chromium.base.BuildInfo",
+                        ignoreCase = true,
+                    )
+                }
+                if (chromiumElement?.methodName.equals("getAll", ignoreCase = true)) {
+                    return WebViewUtil.SPOOF_PACKAGE_NAME
+                }
+            } catch (e: Exception) {
+            }
+        }
+        return super.getPackageName()
+    }
+
     protected open fun setupNotificationChannels() {
-        Notifications.createChannels(this)
+        try {
+            Notifications.createChannels(this)
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to modify notification channels" }
+        }
     }
 
     // EXH
@@ -198,7 +249,7 @@ open class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
         val logFolder = File(
             Environment.getExternalStorageDirectory().absolutePath + File.separator +
                 getString(R.string.app_name),
-            "logs"
+            "logs",
         )
 
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
@@ -209,7 +260,7 @@ open class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
                     override fun generateFileName(logLevel: Int, timestamp: Long): String {
                         return super.generateFileName(
                             logLevel,
-                            timestamp
+                            timestamp,
                         ) + "-${BuildConfig.BUILD_TYPE}.log"
                     }
                 }
@@ -227,7 +278,7 @@ open class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
 
         XLog.init(
             logConfig,
-            *printers.toTypedArray()
+            *printers.toTypedArray(),
         )
 
         xLogD("Application booting...")
@@ -242,7 +293,7 @@ open class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
                 Device name: ${Build.DEVICE}
                 Device model: ${Build.MODEL}
                 Device product name: ${Build.PRODUCT}
-            """.trimIndent()
+            """.trimIndent(),
         )
     }
 
@@ -286,3 +337,24 @@ open class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
 }
 
 private const val ACTION_DISABLE_INCOGNITO_MODE = "tachi.action.DISABLE_INCOGNITO_MODE"
+
+/**
+ * Direct copy of Coil's internal SingletonDiskCache so that [MangaCoverFetcher] can access it.
+ */
+internal object CoilDiskCache {
+
+    private const val FOLDER_NAME = "image_cache"
+    private var instance: DiskCache? = null
+
+    @Synchronized
+    fun get(context: Context): DiskCache {
+        return instance ?: run {
+            val safeCacheDir = context.cacheDir.apply { mkdirs() }
+            // Create the singleton disk cache instance.
+            DiskCache.Builder()
+                .directory(safeCacheDir.resolve(FOLDER_NAME))
+                .build()
+                .also { instance = it }
+        }
+    }
+}

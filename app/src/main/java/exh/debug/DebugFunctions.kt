@@ -2,47 +2,43 @@ package exh.debug
 
 import android.app.Application
 import androidx.work.WorkManager
-import com.pushtorefresh.storio.sqlite.queries.RawQuery
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
-import eu.kanade.tachiyomi.data.database.models.toMangaInfo
-import eu.kanade.tachiyomi.data.database.tables.MangaTable
+import eu.kanade.data.DatabaseHandler
+import eu.kanade.domain.manga.interactor.GetAllManga
+import eu.kanade.domain.manga.interactor.GetExhFavoriteMangaWithMetadata
+import eu.kanade.domain.manga.interactor.GetFavorites
+import eu.kanade.domain.manga.interactor.GetFlatMetadataById
+import eu.kanade.domain.manga.interactor.GetSearchMetadata
+import eu.kanade.domain.manga.interactor.InsertFlatMetadata
+import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.domain.manga.model.toMangaInfo
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
-import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.SourceManager
-import eu.kanade.tachiyomi.source.model.toSManga
 import eu.kanade.tachiyomi.source.online.all.NHentai
 import exh.EXHMigrations
 import exh.eh.EHentaiThrottleManager
 import exh.eh.EHentaiUpdateWorker
-import exh.log.xLogE
 import exh.metadata.metadata.EHentaiSearchMetadata
-import exh.metadata.metadata.base.getFlatMetadataForManga
-import exh.metadata.metadata.base.insertFlatMetadataAsync
-import exh.savedsearches.JsonSavedSearch
 import exh.source.EH_SOURCE_ID
 import exh.source.EXH_SOURCE_ID
-import exh.source.isEhBasedManga
 import exh.source.nHentaiSourceIds
-import exh.util.cancellable
-import exh.util.executeOnIO
 import exh.util.jobScheduler
-import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.mapNotNull
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import uy.kohesive.injekt.injectLazy
-import java.lang.RuntimeException
 import java.util.UUID
 
 @Suppress("unused")
 object DebugFunctions {
     val app: Application by injectLazy()
-    val db: DatabaseHelper by injectLazy()
+    val handler: DatabaseHandler by injectLazy()
     val prefs: PreferencesHelper by injectLazy()
     val sourceManager: SourceManager by injectLazy()
+    val updateManga: UpdateManga by injectLazy()
+    val getFavorites: GetFavorites by injectLazy()
+    val getFlatMetadataById: GetFlatMetadataById by injectLazy()
+    val insertFlatMetadata: InsertFlatMetadata by injectLazy()
+    val getExhFavoriteMangaWithMetadata: GetExhFavoriteMangaWithMetadata by injectLazy()
+    val getSearchMetadata: GetSearchMetadata by injectLazy()
+    val getAllManga: GetAllManga by injectLazy()
 
     fun forceUpgradeMigration() {
         prefs.ehLastVersionCode().set(1)
@@ -56,18 +52,11 @@ object DebugFunctions {
 
     fun resetAgedFlagInEXHManga() {
         runBlocking {
-            val metadataManga = db.getFavoriteMangaWithMetadata().executeOnIO()
-
-            val allManga = metadataManga.asFlow().cancellable().mapNotNull { manga ->
-                if (manga.isEhBasedManga()) manga
-                else null
-            }.toList()
-
-            allManga.forEach { manga ->
-                val meta = db.getFlatMetadataForManga(manga.id!!).executeOnIO()?.raise<EHentaiSearchMetadata>() ?: return@forEach
+            getExhFavoriteMangaWithMetadata.await().forEach { manga ->
+                val meta = getFlatMetadataById.await(manga.id)?.raise<EHentaiSearchMetadata>() ?: return@forEach
                 // remove age flag
                 meta.aged = false
-                db.insertFlatMetadataAsync(meta.flatten()).await()
+                insertFlatMetadata.await(meta)
             }
         }
     }
@@ -78,100 +67,65 @@ object DebugFunctions {
     fun resetEHGalleriesForUpdater() {
         throttleManager.resetThrottle()
         runBlocking {
-            val metadataManga = db.getFavoriteMangaWithMetadata().executeOnIO()
+            val allManga = getExhFavoriteMangaWithMetadata.await()
 
-            val allManga = metadataManga.asFlow().cancellable().mapNotNull { manga ->
-                if (manga.isEhBasedManga()) manga
-                else null
-            }.toList()
             val eh = sourceManager.get(EH_SOURCE_ID)
             val ex = sourceManager.get(EXH_SOURCE_ID)
 
             allManga.forEach { manga ->
                 throttleManager.throttle()
-                (
-                    when (manga.source) {
-                        EH_SOURCE_ID -> eh
-                        EXH_SOURCE_ID -> ex
-                        else -> return@forEach
-                    }
-                    )?.getMangaDetails(manga.toMangaInfo())?.let { networkManga ->
-                    manga.copyFrom(networkManga.toSManga())
-                    manga.initialized = true
-                    db.insertManga(manga).executeOnIO()
-                }
+
+                val networkManga = when (manga.source) {
+                    EH_SOURCE_ID -> eh
+                    EXH_SOURCE_ID -> ex
+                    else -> return@forEach
+                }?.getMangaDetails(manga.toMangaInfo()) ?: return@forEach
+
+                updateManga.awaitUpdateFromSource(manga, networkManga, true)
             }
         }
     }
 
     fun getEHMangaListWithAgedFlagInfo(): String {
-        val galleries = mutableListOf(String())
-        runBlocking {
-            val metadataManga = db.getFavoriteMangaWithMetadata().executeOnIO()
-
-            val allManga = metadataManga.asFlow().cancellable().mapNotNull { manga ->
-                if (manga.isEhBasedManga()) manga
-                else null
-            }.toList()
-
-            allManga.forEach { manga ->
-                val meta = db.getFlatMetadataForManga(manga.id!!).executeOnIO()?.raise<EHentaiSearchMetadata>() ?: return@forEach
-                galleries += "Aged: ${meta.aged}\t Title: ${manga.title}"
+        return runBlocking {
+            getExhFavoriteMangaWithMetadata.await().map { manga ->
+                val meta = getFlatMetadataById.await(manga.id)?.raise<EHentaiSearchMetadata>() ?: return@map
+                "Aged: ${meta.aged}\t Title: ${manga.title}"
             }
-        }
-        return galleries.joinToString(",\n")
+        }.joinToString(",\n")
     }
 
     fun countAgedFlagInEXHManga(): Int {
-        var agedAmount = 0
-        runBlocking {
-            val metadataManga = db.getFavoriteMangaWithMetadata().executeOnIO()
-
-            val allManga = metadataManga.asFlow().cancellable().mapNotNull { manga ->
-                if (manga.isEhBasedManga()) manga
-                else null
-            }.toList()
-
-            allManga.forEach { manga ->
-                val meta = db.getFlatMetadataForManga(manga.id!!).executeOnIO()?.raise<EHentaiSearchMetadata>() ?: return@forEach
-                if (meta.aged) {
-                    // remove age flag
-                    agedAmount++
+        return runBlocking {
+            getExhFavoriteMangaWithMetadata.await()
+                .count { manga ->
+                    val meta = getFlatMetadataById.await(manga.id)
+                        ?.raise<EHentaiSearchMetadata>()
+                        ?: return@count false
+                    meta.aged
                 }
-            }
         }
-        return agedAmount
     }
 
     fun addAllMangaInDatabaseToLibrary() {
-        db.inTransaction {
-            db.lowLevel().executeSQL(
-                RawQuery.builder()
-                    .query(
-                        """
-                        UPDATE ${MangaTable.TABLE}
-                            SET ${MangaTable.COL_FAVORITE} = 1
-                        """.trimIndent()
-                    )
-                    .affectsTables(MangaTable.TABLE)
-                    .build()
-            )
+        runBlocking { handler.await { ehQueries.addAllMangaInDatabaseToLibrary() } }
+    }
+
+    fun countMangaInDatabaseInLibrary() = runBlocking { getFavorites.await().size }
+
+    fun countMangaInDatabaseNotInLibrary() = runBlocking { getAllManga.await() }.count { !it.favorite }
+
+    fun countMangaInDatabase() = runBlocking { getAllManga.await() }.size
+
+    fun countMetadataInDatabase() = runBlocking { getSearchMetadata.await().size }
+
+    fun countMangaInLibraryWithMissingMetadata() = runBlocking {
+        runBlocking { getAllManga.await() }.count {
+            it.favorite && getSearchMetadata.await(it.id) == null
         }
     }
 
-    fun countMangaInDatabaseInLibrary() = db.getMangas().executeAsBlocking().count { it.favorite }
-
-    fun countMangaInDatabaseNotInLibrary() = db.getMangas().executeAsBlocking().count { !it.favorite }
-
-    fun countMangaInDatabase() = db.getMangas().executeAsBlocking().size
-
-    fun countMetadataInDatabase() = db.getSearchMetadata().executeAsBlocking().size
-
-    fun countMangaInLibraryWithMissingMetadata() = db.getMangas().executeAsBlocking().count {
-        it.favorite && db.getSearchMetadataForManga(it.id!!).executeAsBlocking() == null
-    }
-
-    fun clearSavedSearches() = prefs.savedSearches().set(emptySet())
+    fun clearSavedSearches() = runBlocking { handler.await { saved_searchQueries.deleteAll() } }
 
     fun listAllSources() = sourceManager.getCatalogueSources().joinToString("\n") {
         "${it.id}: ${it.name} (${it.lang.uppercase()})"
@@ -235,21 +189,12 @@ object DebugFunctions {
     fun cancelAllScheduledJobs() = app.jobScheduler.cancelAll()
 
     private fun convertSources(from: Long, to: Long) {
-        db.lowLevel().executeSQL(
-            RawQuery.builder()
-                .query(
-                    """
-                    UPDATE ${MangaTable.TABLE}
-                        SET ${MangaTable.COL_SOURCE} = $to
-                        WHERE ${MangaTable.COL_SOURCE} = $from
-                    """.trimIndent()
-                )
-                .affectsTables(MangaTable.TABLE)
-                .build()
-        )
+        runBlocking {
+            handler.await { ehQueries.migrateSource(to, from) }
+        }
     }
 
-    fun copyEHentaiSavedSearchesToExhentai() {
+    /*fun copyEHentaiSavedSearchesToExhentai() {
         runBlocking {
             val source = sourceManager.get(EH_SOURCE_ID) as? CatalogueSource ?: return@runBlocking
             val newSource = sourceManager.get(EXH_SOURCE_ID) as? CatalogueSource ?: return@runBlocking
@@ -325,63 +270,23 @@ object DebugFunctions {
             }
             prefs.savedSearches().set((otherSerialized + newSerialized).toSet())
         }
-    }
+    }*/
 
     fun fixReaderViewerBackupBug() {
-        db.inTransaction {
-            db.lowLevel().executeSQL(
-                RawQuery.builder()
-                    .query(
-                        """
-                        UPDATE ${MangaTable.TABLE}
-                            SET ${MangaTable.COL_VIEWER} = 0
-                            WHERE ${MangaTable.COL_VIEWER} = -1
-                        """.trimIndent()
-                    )
-                    .affectsTables(MangaTable.TABLE)
-                    .build()
-            )
-        }
+        runBlocking { handler.await { ehQueries.fixReaderViewerBackupBug() } }
     }
 
     fun resetReaderViewerForAllManga() {
-        db.inTransaction {
-            db.lowLevel().executeSQL(
-                RawQuery.builder()
-                    .query(
-                        """
-                        UPDATE ${MangaTable.TABLE}
-                            SET ${MangaTable.COL_VIEWER} = 0
-                        """.trimIndent()
-                    )
-                    .affectsTables(MangaTable.TABLE)
-                    .build()
-            )
-        }
+        runBlocking { handler.await { ehQueries.resetReaderViewerForAllManga() } }
     }
 
     fun migrateAllNhentaiToOtherLang() {
-        val sources = nHentaiSourceIds.toMutableList()
-            .also { it.remove(NHentai.otherId) }
-            .joinToString(separator = ",")
+        val sources = nHentaiSourceIds - NHentai.otherId
 
-        db.inTransaction {
-            db.lowLevel().executeSQL(
-                RawQuery.builder()
-                    .query(
-                        """
-                        UPDATE ${MangaTable.TABLE}
-                            SET ${MangaTable.COL_SOURCE} = ${NHentai.otherId}
-                            WHERE ${MangaTable.COL_FAVORITE} = 1 AND ${MangaTable.COL_SOURCE} in ($sources)
-                        """.trimIndent()
-                    )
-                    .affectsTables(MangaTable.TABLE)
-                    .build()
-            )
-        }
+        runBlocking { handler.await { ehQueries.migrateAllNhentaiToOtherLang(NHentai.otherId, sources) } }
     }
 
-    fun unwatchAllSources() {
-        prefs.latestTabSources().delete()
+    fun resetFilteredScanlatorsForAllManga() {
+        runBlocking { handler.await { ehQueries.resetFilteredScanlatorsForAllManga() } }
     }
 }

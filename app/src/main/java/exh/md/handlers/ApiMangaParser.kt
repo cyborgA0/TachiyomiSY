@@ -1,18 +1,19 @@
 package exh.md.handlers
 
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
+import eu.kanade.domain.manga.interactor.GetFlatMetadataById
+import eu.kanade.domain.manga.interactor.GetManga
+import eu.kanade.domain.manga.interactor.InsertFlatMetadata
 import eu.kanade.tachiyomi.source.model.SManga
 import exh.log.xLogE
 import exh.md.dto.ChapterDataDto
 import exh.md.dto.ChapterDto
 import exh.md.dto.MangaDto
+import exh.md.dto.StatisticsMangaDto
 import exh.md.utils.MdConstants
 import exh.md.utils.MdUtil
 import exh.md.utils.asMdMap
 import exh.metadata.metadata.MangaDexSearchMetadata
 import exh.metadata.metadata.base.RaisedTag
-import exh.metadata.metadata.base.getFlatMetadataForManga
-import exh.metadata.metadata.base.insertFlatMetadata
 import exh.util.capitalize
 import exh.util.floor
 import exh.util.nullIfEmpty
@@ -22,9 +23,11 @@ import uy.kohesive.injekt.injectLazy
 import java.util.Locale
 
 class ApiMangaParser(
-    private val lang: String
+    private val lang: String,
 ) {
-    val db: DatabaseHelper by injectLazy()
+    private val getManga: GetManga by injectLazy()
+    private val insertFlatMetadata: InsertFlatMetadata by injectLazy()
+    private val getFlatMetadataById: GetFlatMetadataById by injectLazy()
 
     val metaClass = MangaDexSearchMetadata::class
 
@@ -36,28 +39,39 @@ class ApiMangaParser(
     }?.call()
         ?: error("Could not find no-args constructor for meta class: ${metaClass.qualifiedName}!")
 
-    fun parseToManga(manga: MangaInfo, input: MangaDto, sourceId: Long): MangaInfo {
-        val mangaId = db.getManga(manga.key, sourceId).executeAsBlocking()?.id
+    suspend fun parseToManga(
+        manga: MangaInfo,
+        sourceId: Long,
+        input: MangaDto,
+        simpleChapters: List<String>,
+        statistics: StatisticsMangaDto?,
+    ): MangaInfo {
+        val mangaId = getManga.await(manga.key, sourceId)?.id
         val metadata = if (mangaId != null) {
-            val flatMetadata = db.getFlatMetadataForManga(mangaId).executeAsBlocking()
+            val flatMetadata = getFlatMetadataById.await(mangaId)
             flatMetadata?.raise(metaClass) ?: newMetaInstance()
         } else newMetaInstance()
 
-        parseIntoMetadata(metadata, input)
+        parseIntoMetadata(metadata, input, simpleChapters, statistics)
         if (mangaId != null) {
             metadata.mangaId = mangaId
-            db.insertFlatMetadata(metadata.flatten())
+            insertFlatMetadata.await(metadata.flatten())
         }
 
         return metadata.createMangaInfo(manga)
     }
 
-    fun parseIntoMetadata(metadata: MangaDexSearchMetadata, mangaDto: MangaDto) {
+    fun parseIntoMetadata(
+        metadata: MangaDexSearchMetadata,
+        mangaDto: MangaDto,
+        simpleChapters: List<String>,
+        statistics: StatisticsMangaDto?,
+    ) {
         with(metadata) {
             try {
                 val mangaAttributesDto = mangaDto.data.attributes
                 mdUuid = mangaDto.data.id
-                title = MdUtil.cleanString(mangaAttributesDto.title.asMdMap().let { it[lang] ?: it["en"].orEmpty() })
+                title = MdUtil.cleanString(MdUtil.getTitleFromManga(mangaAttributesDto, lang))
                 altTitles = mangaAttributesDto.altTitles.mapNotNull { it[lang] }.nullIfEmpty()
 
                 val mangaRelationshipsDto = mangaDto.data.relationships
@@ -69,26 +83,32 @@ class ApiMangaParser(
                         cover = MdUtil.cdnCoverUrl(mangaDto.data.id, coverFileName)
                     }
 
-                description = MdUtil.cleanDescription(mangaAttributesDto.description.asMdMap().let { it[lang] ?: it["en"].orEmpty() })
+                description = MdUtil.cleanDescription(
+                    MdUtil.getFromLangMap(
+                        langMap = mangaAttributesDto.description.asMdMap(),
+                        currentLang = lang,
+                        originalLanguage = mangaAttributesDto.originalLanguage,
+                    ).orEmpty(),
+                )
 
                 authors = mangaRelationshipsDto.filter { relationshipDto ->
                     relationshipDto.type.equals(MdConstants.Types.author, true)
-                }.mapNotNull { it.attributes!!.name }.distinct()
+                }.mapNotNull { it.attributes?.name }.distinct()
 
                 artists = mangaRelationshipsDto.filter { relationshipDto ->
                     relationshipDto.type.equals(MdConstants.Types.artist, true)
-                }.mapNotNull { it.attributes!!.name }.distinct()
+                }.mapNotNull { it.attributes?.name }.distinct()
 
                 langFlag = mangaAttributesDto.originalLanguage
                 val lastChapter = mangaAttributesDto.lastChapter?.toFloatOrNull()
                 lastChapterNumber = lastChapter?.floor()
 
-                /*networkManga.rating?.let {
-                    manga.rating = it.bayesian ?: it.mean
-                    manga.users = it.users
-                }*/
+                statistics?.rating?.let {
+                    rating = it.bayesian?.toFloat()
+                    // manga.users = it.users
+                }
 
-                mangaAttributesDto.links?.asMdMap()?.let { links ->
+                mangaAttributesDto.links?.asMdMap<String>()?.let { links ->
                     links["al"]?.let { anilistId = it }
                     links["kt"]?.let { kitsuId = it }
                     links["mal"]?.let { myAnimeListId = it }
@@ -98,15 +118,17 @@ class ApiMangaParser(
 
                 // val filteredChapters = filterChapterForChecking(networkApiManga)
 
-                val tempStatus = parseStatus(mangaAttributesDto.status ?: "")
-                /*val publishedOrCancelled =
-                    tempStatus == SManga.PUBLICATION_COMPLETE || tempStatus == SManga.CANCELLED
-                if (publishedOrCancelled && isMangaCompleted(networkApiManga, filteredChapters)) {
-                    manga.status = SManga.COMPLETED
-                    manga.missing_chapters = null
-                } else {*/
-                status = tempStatus
-                // }
+                val tempStatus = parseStatus(mangaAttributesDto.status)
+                val publishedOrCancelled = tempStatus == SManga.PUBLISHING_FINISHED || tempStatus == SManga.CANCELLED
+                status = if (
+                    mangaAttributesDto.lastChapter != null &&
+                    publishedOrCancelled &&
+                    mangaAttributesDto.lastChapter in simpleChapters
+                ) {
+                    SManga.COMPLETED
+                } else {
+                    tempStatus
+                }
 
                 // things that will go with the genre tags but aren't actually genre
                 val nonGenres = listOfNotNull(
@@ -134,34 +156,6 @@ class ApiMangaParser(
         }
     }
 
-    /**
-     * If chapter title is oneshot or a chapter exists which matches the last chapter in the required language
-     * return manga is complete
-     */
-    /*private fun isMangaCompleted(
-        serializer: ApiMangaSerializer,
-        filteredChapters: List<ChapterSerializer>
-    ): Boolean {
-        if (filteredChapters.isEmpty() || serializer.data.manga.lastChapter.isNullOrEmpty()) {
-            return false
-        }
-        val finalChapterNumber = serializer.data.manga.lastChapter!!
-        if (MdUtil.validOneShotFinalChapters.contains(finalChapterNumber)) {
-            filteredChapters.firstOrNull()?.let {
-                if (isOneShot(it, finalChapterNumber)) {
-                    return true
-                }
-            }
-        }
-        val removeOneshots = filteredChapters.asSequence()
-            .map { it.chapter!!.toDoubleOrNull() }
-            .filter { it != null }
-            .map { floor(it!!).toInt() }
-            .filter { it != 0 }
-            .toList().distinctBy { it }
-        return removeOneshots.toList().size == floor(finalChapterNumber.toDouble()).toInt()
-    }*/
-
     /* private fun filterChapterForChecking(serializer: ApiMangaSerializer): List<ChapterSerializer> {
          serializer.data.chapters ?: return emptyList()
          return serializer.data.chapters.asSequence()
@@ -182,23 +176,21 @@ class ApiMangaParser(
             ((chapter.chapter.isNullOrEmpty() || chapter.chapter == "0") && MdUtil.validOneShotFinalChapters.contains(finalChapterNumber))
     }*/
 
-    private fun parseStatus(status: String) = when (status) {
+    private fun parseStatus(status: String?) = when (status) {
         "ongoing" -> SManga.ONGOING
-        "completed" -> SManga.PUBLICATION_COMPLETE
+        "completed" -> SManga.PUBLISHING_FINISHED
         "cancelled" -> SManga.CANCELLED
-        "hiatus" -> SManga.HIATUS
+        "hiatus" -> SManga.ON_HIATUS
         else -> SManga.UNKNOWN
     }
 
     fun chapterListParse(chapterListResponse: List<ChapterDataDto>, groupMap: Map<String, String>): List<ChapterInfo> {
         val now = System.currentTimeMillis()
-
-        return chapterListResponse.asSequence()
+        return chapterListResponse
+            .filterNot { MdUtil.parseDate(it.attributes.publishAt) > now && it.attributes.externalUrl == null }
             .map {
                 mapChapter(it, groupMap)
-            }.filter {
-                it.dateUpload <= now
-            }.toList()
+            }
     }
 
     fun chapterParseForMangaId(chapterDto: ChapterDto): String? {

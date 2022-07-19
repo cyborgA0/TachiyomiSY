@@ -9,13 +9,12 @@ import exh.md.dto.LoginRequestDto
 import exh.md.dto.RefreshTokenDto
 import exh.md.service.MangaDexAuthService
 import exh.md.utils.MdUtil
-import exh.util.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.serialization.encodeToString
+import kotlin.time.Duration.Companion.seconds
 
-class MangaDexLoginHelper(val authServiceLazy: Lazy<MangaDexAuthService>, val preferences: PreferencesHelper, val mdList: MdList) {
-    val authService by authServiceLazy
+class MangaDexLoginHelper(authServiceLazy: Lazy<MangaDexAuthService>, val preferences: PreferencesHelper, val mdList: MdList) {
+    private val authService by authServiceLazy
     suspend fun isAuthenticated(): Boolean {
         return runCatching { authService.checkToken().isAuthenticated }
             .getOrElse { e ->
@@ -31,7 +30,7 @@ class MangaDexLoginHelper(val authServiceLazy: Lazy<MangaDexAuthService>, val pr
         }
         val refresh = runCatching {
             val jsonResponse = authService.refreshToken(RefreshTokenDto(refreshToken))
-            preferences.trackToken(mdList).set(MdUtil.jsonParser.encodeToString(jsonResponse.token))
+            MdUtil.updateLoginToken(jsonResponse.token, preferences, mdList)
         }
 
         val e = refresh.exceptionOrNull()
@@ -47,17 +46,22 @@ class MangaDexLoginHelper(val authServiceLazy: Lazy<MangaDexAuthService>, val pr
         return withIOContext {
             val loginRequest = LoginRequestDto(username, password)
             val loginResult = runCatching { authService.login(loginRequest) }
+                .onFailure { this@MangaDexLoginHelper.xLogE("Error logging in", it) }
 
             val e = loginResult.exceptionOrNull()
             if (e is CancellationException) throw e
 
             val loginResponseDto = loginResult.getOrNull()
-            MdUtil.updateLoginToken(
-                loginResponseDto?.token,
-                preferences,
-                mdList
-            )
-            loginResponseDto != null
+            if (loginResponseDto != null) {
+                MdUtil.updateLoginToken(
+                    loginResponseDto.token,
+                    preferences,
+                    mdList,
+                )
+                true
+            } else {
+                false
+            }
         }
     }
 
@@ -74,7 +78,12 @@ class MangaDexLoginHelper(val authServiceLazy: Lazy<MangaDexAuthService>, val pr
     suspend fun logout() {
         return withIOContext {
             withTimeoutOrNull(10.seconds) {
-                authService.logout()
+                runCatching {
+                    authService.logout()
+                }.onFailure {
+                    if (it is CancellationException) throw it
+                    this@MangaDexLoginHelper.xLogE("Error logging out", it)
+                }
             }
         }
     }

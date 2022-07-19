@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.data.database.models.Track
 import eu.kanade.tachiyomi.data.track.TrackManager
 import eu.kanade.tachiyomi.data.track.TrackService
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
+import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.toMangaInfo
 import eu.kanade.tachiyomi.util.lang.awaitSingle
 import eu.kanade.tachiyomi.util.lang.runAsObservable
@@ -19,7 +20,7 @@ import tachiyomi.source.model.MangaInfo
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-class MdList(private val context: Context, id: Int) : TrackService(id) {
+class MdList(private val context: Context, id: Long) : TrackService(id) {
 
     private val mdex by lazy { MdUtil.getEnabledMangaDex(Injekt.get()) }
 
@@ -62,13 +63,13 @@ class MdList(private val context: Context, id: Int) : TrackService(id) {
                 }
             }
 
-            /*if (track.score.toInt() > 0) {
+            if (remoteTrack.score != track.score) {
                 mdex.updateRating(track)
             }
 
             // mangadex wont update chapters if manga is not follows this prevents unneeded network call
 
-            if (followStatus != FollowStatus.UNFOLLOWED) {
+            /*if (followStatus != FollowStatus.UNFOLLOWED) {
                 if (track.total_chapters != 0 && track.last_chapter_read == track.total_chapters) {
                     track.status = FollowStatus.COMPLETED.int
                     mdex.updateFollowStatus(MdUtil.getMangaId(track.tracking_url), FollowStatus.COMPLETED)
@@ -102,7 +103,7 @@ class MdList(private val context: Context, id: Int) : TrackService(id) {
                     FollowStatus.READING.int
                 } else FollowStatus.PLAN_TO_READ.int
             }
-        }
+        },
     )
 
     override suspend fun refresh(track: Track): Track {
@@ -129,13 +130,13 @@ class MdList(private val context: Context, id: Int) : TrackService(id) {
     override suspend fun search(query: String): List<TrackSearch> {
         return withIOContext {
             val mdex = mdex ?: throw MangaDexNotFoundException()
-            mdex.fetchSearchManga(0, query, mdex.getFilterList())
+            mdex.fetchSearchManga(1, query, FilterList())
                 .flatMap { page ->
-                    runAsObservable({
+                    runAsObservable {
                         page.mangas.map {
                             toTrackSearch(mdex.getMangaDetails(it.toMangaInfo()))
                         }
-                    })
+                    }
                 }
                 .awaitSingle()
         }

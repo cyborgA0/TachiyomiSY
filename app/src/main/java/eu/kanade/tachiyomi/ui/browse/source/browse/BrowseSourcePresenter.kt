@@ -2,11 +2,24 @@ package eu.kanade.tachiyomi.ui.browse.source.browse
 
 import android.os.Bundle
 import eu.davidea.flexibleadapter.items.IFlexible
+import eu.kanade.domain.category.interactor.GetCategories
+import eu.kanade.domain.category.interactor.SetMangaCategories
+import eu.kanade.domain.chapter.interactor.GetChapterByMangaId
+import eu.kanade.domain.chapter.interactor.SyncChaptersWithTrackServiceTwoWay
+import eu.kanade.domain.manga.interactor.GetDuplicateLibraryManga
+import eu.kanade.domain.manga.interactor.GetManga
+import eu.kanade.domain.manga.interactor.InsertManga
+import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.domain.manga.model.toDbManga
+import eu.kanade.domain.manga.model.toMangaUpdate
+import eu.kanade.domain.source.interactor.DeleteSavedSearchById
+import eu.kanade.domain.source.interactor.GetExhSavedSearch
+import eu.kanade.domain.source.interactor.InsertSavedSearch
+import eu.kanade.domain.track.interactor.InsertTrack
+import eu.kanade.domain.track.model.toDomainTrack
 import eu.kanade.tachiyomi.data.cache.CoverCache
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
-import eu.kanade.tachiyomi.data.database.models.Category
 import eu.kanade.tachiyomi.data.database.models.Manga
-import eu.kanade.tachiyomi.data.database.models.MangaCategory
+import eu.kanade.tachiyomi.data.database.models.toDomainManga
 import eu.kanade.tachiyomi.data.database.models.toMangaInfo
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.data.track.EnhancedTrackService
@@ -35,47 +48,60 @@ import eu.kanade.tachiyomi.ui.browse.source.filter.TextSectionItem
 import eu.kanade.tachiyomi.ui.browse.source.filter.TriStateItem
 import eu.kanade.tachiyomi.ui.browse.source.filter.TriStateSectionItem
 import eu.kanade.tachiyomi.util.chapter.ChapterSettingsHelper
-import eu.kanade.tachiyomi.util.chapter.syncChaptersWithTrackServiceTwoWay
 import eu.kanade.tachiyomi.util.lang.launchIO
 import eu.kanade.tachiyomi.util.lang.withUIContext
 import eu.kanade.tachiyomi.util.removeCovers
-import exh.log.xLogE
-import exh.savedsearches.EXHSavedSearch
-import exh.savedsearches.JsonSavedSearch
+import eu.kanade.tachiyomi.util.system.logcat
+import exh.savedsearches.models.SavedSearch
+import exh.source.isEhBasedSource
+import exh.util.nullIfBlank
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
-import rx.Subscription
-import rx.android.schedulers.AndroidSchedulers
-import rx.schedulers.Schedulers
-import timber.log.Timber
+import logcat.LogPriority
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import xyz.nulldev.ts.api.http.serializer.FilterSerializer
-import java.lang.RuntimeException
 import java.util.Date
+import eu.kanade.domain.category.model.Category as DomainCategory
+import eu.kanade.domain.manga.model.Manga as DomainManga
 
-/**
- * Presenter of [BrowseSourceController].
- */
 open class BrowseSourcePresenter(
     private val sourceId: Long,
     searchQuery: String? = null,
     // SY -->
     private val filters: String? = null,
+    private val savedSearch: Long? = null,
     // SY <--
     private val sourceManager: SourceManager = Injekt.get(),
-    private val db: DatabaseHelper = Injekt.get(),
     private val prefs: PreferencesHelper = Injekt.get(),
-    private val coverCache: CoverCache = Injekt.get()
+    private val coverCache: CoverCache = Injekt.get(),
+    private val getManga: GetManga = Injekt.get(),
+    private val getDuplicateLibraryManga: GetDuplicateLibraryManga = Injekt.get(),
+    private val getCategories: GetCategories = Injekt.get(),
+    private val getChapterByMangaId: GetChapterByMangaId = Injekt.get(),
+    private val setMangaCategories: SetMangaCategories = Injekt.get(),
+    private val insertManga: InsertManga = Injekt.get(),
+    private val updateManga: UpdateManga = Injekt.get(),
+    private val insertTrack: InsertTrack = Injekt.get(),
+    private val syncChaptersWithTrackServiceTwoWay: SyncChaptersWithTrackServiceTwoWay = Injekt.get(),
+    // SY -->
+    private val deleteSavedSearchById: DeleteSavedSearchById = Injekt.get(),
+    private val insertSavedSearch: InsertSavedSearch = Injekt.get(),
+    private val getExhSavedSearch: GetExhSavedSearch = Injekt.get(),
+    // SY <--
 ) : BasePresenter<BrowseSourceController>() {
 
     /**
@@ -107,7 +133,7 @@ open class BrowseSourcePresenter(
     /**
      * Subscription for the pager.
      */
-    private var pagerSubscription: Subscription? = null
+    private var pagerJob: Job? = null
 
     /**
      * Subscription for one request from the pager.
@@ -128,25 +154,41 @@ open class BrowseSourcePresenter(
         super.onCreate(savedState)
 
         source = sourceManager.get(sourceId) as? CatalogueSource ?: return
-
         sourceFilters = source.getFilterList()
 
         // SY -->
+        val savedSearchFilters = savedSearch
         val jsonFilters = filters
-        if (jsonFilters != null) {
+        if (savedSearchFilters != null) {
+            val savedSearch = runBlocking { getExhSavedSearch.awaitOne(savedSearchFilters) { sourceFilters } }
+            if (savedSearch != null) {
+                query = savedSearch.query
+                if (savedSearch.filterList != null) {
+                    appliedFilters = savedSearch.filterList
+                }
+            }
+        } else if (jsonFilters != null) {
             runCatching {
-                val filters = Json.decodeFromString<JsonSavedSearch>(jsonFilters)
-                filterSerializer.deserialize(sourceFilters, filters.filters)
+                val filters = Json.decodeFromString<JsonArray>(jsonFilters)
+                filterSerializer.deserialize(sourceFilters, filters)
+                appliedFilters = sourceFilters
             }
         }
-        val allDefault = sourceFilters == source.getFilterList()
+
+        getExhSavedSearch.subscribe(source.id, source::getFilterList)
+            .onEach {
+                withUIContext {
+                    view?.setSavedSearches(it)
+                }
+            }
+            .launchIn(presenterScope)
         // SY <--
 
         if (savedState != null) {
             query = savedState.getString(::query.name, "")
         }
 
-        restartPager(/* SY -->*/ filters = if (allDefault) this.appliedFilters else sourceFilters /* SY <--*/)
+        restartPager()
     }
 
     override fun onSave(state: Bundle) {
@@ -168,35 +210,46 @@ open class BrowseSourcePresenter(
         pager = createPager(query, filters)
 
         val sourceId = source.id
-
         val sourceDisplayMode = prefs.sourceDisplayMode()
 
-        // Prepare the pager.
-        pagerSubscription?.let { remove(it) }
-        pagerSubscription = pager.results()
-            .observeOn(Schedulers.io())
-            // SY -->
-            .map { (page, mangas, metadata) ->
-                Triple(page, mangas.map { networkToLocalManga(it, sourceId) }, metadata)
-            }
-            // SY <--
-            .doOnNext { initializeMangas(it.second) }
-            // SY -->
-            .map { (page, mangas, metadata) ->
-                page to mangas.mapIndexed { index, manga ->
-                    SourceItem(manga, sourceDisplayMode, metadata?.getOrNull(index))
+        pagerJob?.cancel()
+        pagerJob = presenterScope.launchIO {
+            pager.asFlow()
+                // SY -->
+                .map { (first, second, third) ->
+                    Triple(
+                        first,
+                        second.map {
+                            networkToLocalManga(
+                                it,
+                                sourceId,
+                            ).toDomainManga()!!
+                        },
+                        third,
+                    )
                 }
-            }
-            // SY <--
-            .observeOn(AndroidSchedulers.mainThread())
-            .subscribeReplay(
-                { view, (page, mangas) ->
-                    view.onAddPage(page, mangas)
-                },
-                { _, error ->
-                    Timber.e(error)
+                // SY <--
+                .onEach { initializeMangas(it.second) }
+                // SY -->
+                .map { (first, second, third) ->
+                    first to second.mapIndexed { index, manga ->
+                        SourceItem(
+                            manga,
+                            sourceDisplayMode,
+                            third?.getOrNull(index),
+                        )
+                    }
                 }
-            )
+                // SY <--
+                .catch { error ->
+                    logcat(LogPriority.ERROR, error)
+                }
+                .collectLatest { (page, mangas) ->
+                    withUIContext {
+                        view?.onAddPage(page, mangas)
+                    }
+                }
+        }
 
         // Request first page.
         requestNext()
@@ -233,15 +286,22 @@ open class BrowseSourcePresenter(
      * @return a manga from the database.
      */
     private fun networkToLocalManga(sManga: SManga, sourceId: Long): Manga {
-        var localManga = db.getManga(sManga.url, sourceId).executeAsBlocking()
+        var localManga = runBlocking { getManga.await(sManga.url, sourceId) }
         if (localManga == null) {
             val newManga = Manga.create(sManga.url, sManga.title, sourceId)
             newManga.copyFrom(sManga)
-            val result = db.insertManga(newManga).executeAsBlocking()
-            newManga.id = result.insertedId()
-            localManga = newManga
+            newManga.id = -1
+            val result = runBlocking {
+                val id = insertManga.await(newManga.toDomainManga()!!)
+                getManga.await(id!!)
+            }
+            localManga = result
+        } else if (!localManga.favorite) {
+            // if the manga isn't a favorite, set its display title from source
+            // if it later becomes a favorite, updated title will go to db
+            localManga = localManga.copy(ogTitle = sManga.title)
         }
-        return localManga
+        return localManga?.toDbManga()!!
     }
 
     /**
@@ -249,18 +309,18 @@ open class BrowseSourcePresenter(
      *
      * @param mangas the list of manga to initialize.
      */
-    fun initializeMangas(mangas: List<Manga>) {
+    fun initializeMangas(mangas: List<DomainManga>) {
         presenterScope.launchIO {
             mangas.asFlow()
-                .filter { it.thumbnail_url == null && !it.initialized }
-                .map { getMangaDetails(it) }
+                .filter { it.thumbnailUrl == null && !it.initialized }
+                .map { getMangaDetails(it.toDbManga()) }
                 .onEach {
                     withUIContext {
                         @Suppress("DEPRECATION")
-                        view?.onMangaInitialized(it)
+                        view?.onMangaInitialized(it.toDomainManga()!!)
                     }
                 }
-                .catch { e -> Timber.e(e) }
+                .catch { e -> logcat(LogPriority.ERROR, e) }
                 .collect()
         }
     }
@@ -276,9 +336,13 @@ open class BrowseSourcePresenter(
             val networkManga = source.getMangaDetails(manga.toMangaInfo())
             manga.copyFrom(networkManga.toSManga())
             manga.initialized = true
-            db.insertManga(manga).executeAsBlocking()
+            updateManga.await(
+                manga
+                    .toDomainManga()
+                    ?.toMangaUpdate()!!,
+            )
         } catch (e: Exception) {
-            Timber.e(e)
+            logcat(LogPriority.ERROR, e)
         }
         return manga
     }
@@ -298,33 +362,40 @@ open class BrowseSourcePresenter(
         if (!manga.favorite) {
             manga.removeCovers(coverCache)
         } else {
-            ChapterSettingsHelper.applySettingDefaults(manga)
+            ChapterSettingsHelper.applySettingDefaults(manga.toDomainManga()!!)
 
             autoAddTrack(manga)
         }
 
-        db.insertManga(manga).executeAsBlocking()
+        runBlocking {
+            updateManga.await(
+                manga
+                    .toDomainManga()
+                    ?.toMangaUpdate()!!,
+            )
+        }
     }
 
     private fun autoAddTrack(manga: Manga) {
-        loggedServices
-            .filterIsInstance<EnhancedTrackService>()
-            .filter { it.accept(source) }
-            .forEach { service ->
-                launchIO {
+        launchIO {
+            loggedServices
+                .filterIsInstance<EnhancedTrackService>()
+                .filter { it.accept(source) }
+                .forEach { service ->
                     try {
                         service.match(manga)?.let { track ->
                             track.manga_id = manga.id!!
                             (service as TrackService).bind(track)
-                            db.insertTrack(track).executeAsBlocking()
+                            insertTrack.await(track.toDomainTrack()!!)
 
-                            syncChaptersWithTrackServiceTwoWay(db, db.getChapters(manga).executeAsBlocking(), track, service as TrackService)
+                            val chapters = getChapterByMangaId.await(manga.id!!)
+                            syncChaptersWithTrackServiceTwoWay.await(chapters, track.toDomainTrack()!!, service)
                         }
                     } catch (e: Exception) {
-                        Timber.w(e, "Could not match manga: ${manga.title} with service $service")
+                        logcat(LogPriority.WARN, e) { "Could not match manga: ${manga.title} with service $service" }
                     }
                 }
-            }
+        }
     }
 
     /**
@@ -337,7 +408,13 @@ open class BrowseSourcePresenter(
     }
 
     open fun createPager(query: String, filters: FilterList): Pager {
-        return SourcePager(source, query, filters)
+        // SY -->
+        return if (source.isEhBasedSource()) {
+            EHentaiPager(source, query, filters)
+        } else {
+            SourcePager(source, query, filters)
+        }
+        // SY <--
     }
 
     // SY -->
@@ -393,8 +470,12 @@ open class BrowseSourcePresenter(
      *
      * @return List of categories, not including the default category
      */
-    fun getCategories(): List<Category> {
-        return db.getCategories().executeAsBlocking()
+    suspend fun getCategories(): List<DomainCategory> {
+        return getCategories.subscribe().firstOrNull() ?: emptyList()
+    }
+
+    suspend fun getDuplicateLibraryManga(manga: DomainManga): DomainManga? {
+        return getDuplicateLibraryManga.await(manga.title, manga.source)
     }
 
     /**
@@ -403,9 +484,10 @@ open class BrowseSourcePresenter(
      * @param manga the manga to get categories from.
      * @return Array of category ids the manga is in, if none returns default id
      */
-    fun getMangaCategoryIds(manga: Manga): Array<Int?> {
-        val categories = db.getCategoriesForManga(manga).executeAsBlocking()
-        return categories.mapNotNull { it.id }.toTypedArray()
+    fun getMangaCategoryIds(manga: DomainManga): Array<Long?> {
+        return runBlocking { getCategories.await(manga.id) }
+            .map { it.id }
+            .toTypedArray()
     }
 
     /**
@@ -414,9 +496,13 @@ open class BrowseSourcePresenter(
      * @param categories the selected categories.
      * @param manga the manga to move.
      */
-    private fun moveMangaToCategories(manga: Manga, categories: List<Category>) {
-        val mc = categories.filter { it.id != 0 }.map { MangaCategory.create(manga, it) }
-        db.setMangaCategories(mc, listOf(manga))
+    private fun moveMangaToCategories(manga: Manga, categories: List<DomainCategory>) {
+        presenterScope.launchIO {
+            setMangaCategories.await(
+                mangaId = manga.id!!,
+                categoryIds = categories.filter { it.id != 0L }.map { it.id },
+            )
+        }
     }
 
     /**
@@ -425,7 +511,7 @@ open class BrowseSourcePresenter(
      * @param category the selected category.
      * @param manga the manga to move.
      */
-    fun moveMangaToCategory(manga: Manga, category: Category?) {
+    fun moveMangaToCategory(manga: Manga, category: DomainCategory?) {
         moveMangaToCategories(manga, listOfNotNull(category))
     }
 
@@ -435,7 +521,7 @@ open class BrowseSourcePresenter(
      * @param manga needed to change
      * @param selectedCategories selected categories
      */
-    fun updateMangaCategories(manga: Manga, selectedCategories: List<Category>) {
+    fun updateMangaCategories(manga: Manga, selectedCategories: List<DomainCategory>) {
         if (!manga.favorite) {
             changeMangaFavorite(manga)
         }
@@ -444,51 +530,30 @@ open class BrowseSourcePresenter(
     }
 
     // EXH -->
-    fun saveSearches(searches: List<EXHSavedSearch>) {
-        val otherSerialized = prefs.savedSearches().get().filterNot {
-            it.startsWith("${source.id}:")
-        }.toSet()
-        val newSerialized = searches.map {
-            "${source.id}:" + Json.encodeToString(
-                JsonSavedSearch(
-                    it.name,
-                    it.query,
-                    if (it.filterList != null) {
-                        filterSerializer.serialize(it.filterList)
-                    } else JsonArray(emptyList())
-                )
+    fun saveSearch(name: String, query: String, filterList: FilterList) {
+        launchIO {
+            insertSavedSearch.await(
+                SavedSearch(
+                    id = -1,
+                    source = source.id,
+                    name = name.trim(),
+                    query = query.nullIfBlank(),
+                    filtersJson = runCatching { filterSerializer.serialize(filterList).ifEmpty { null }?.let { Json.encodeToString(it) } }.getOrNull(),
+                ),
             )
         }
-        prefs.savedSearches().set(otherSerialized + newSerialized)
     }
 
-    fun loadSearches(): List<EXHSavedSearch> {
-        return prefs.savedSearches().get().mapNotNull {
-            val id = it.substringBefore(':').toLongOrNull() ?: return@mapNotNull null
-            if (id != source.id) return@mapNotNull null
-            val content = try {
-                Json.decodeFromString<JsonSavedSearch>(it.substringAfter(':'))
-            } catch (e: Exception) {
-                return@mapNotNull null
-            }
-            try {
-                val originalFilters = source.getFilterList()
-                filterSerializer.deserialize(originalFilters, content.filters)
-                EXHSavedSearch(
-                    content.name,
-                    content.query,
-                    originalFilters
-                )
-            } catch (t: RuntimeException) {
-                // Load failed
-                xLogE("Failed to load saved search!", t)
-                EXHSavedSearch(
-                    content.name,
-                    content.query,
-                    null
-                )
-            }
+    fun deleteSearch(savedSearchId: Long) {
+        launchIO {
+            deleteSavedSearchById.await(savedSearchId)
         }
     }
+
+    suspend fun loadSearch(searchId: Long) =
+        getExhSavedSearch.awaitOne(searchId, source::getFilterList)
+
+    suspend fun loadSearches() =
+        getExhSavedSearch.await(source.id, source::getFilterList)
     // EXH <--
 }

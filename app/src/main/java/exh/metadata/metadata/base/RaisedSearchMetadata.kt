@@ -4,7 +4,6 @@ import android.content.Context
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.toMangaInfo
 import eu.kanade.tachiyomi.source.model.toSManga
-import exh.metadata.forEach
 import exh.metadata.metadata.EHentaiSearchMetadata
 import exh.metadata.metadata.EightMusesSearchMetadata
 import exh.metadata.metadata.HBrowseSearchMetadata
@@ -55,6 +54,15 @@ abstract class RaisedSearchMetadata {
         if (newTitle != null) titles += RaisedTitle(newTitle, type)
     }
 
+    fun <T : Any> getItem(
+        item: T?,
+        toString: (T) -> String = Any::toString,
+        block: (T) -> String,
+    ): Pair<String, String>? {
+        item ?: return null
+        return block(item) to toString(item)
+    }
+
     open fun copyTo(manga: SManga) {
         val infoManga = createMangaInfo(manga.toMangaInfo()).toSManga()
         manga.copyFrom(infoManga)
@@ -73,7 +81,7 @@ abstract class RaisedSearchMetadata {
                 it.namespace
             }.entries
 
-            groupedTags.forEach { namespace, tags ->
+            groupedTags.forEach { (namespace, tags) ->
                 if (tags.isNotEmpty()) {
                     val joinedTags = tags.joinToString(separator = " ", transform = { "<${it.name}>" })
                     if (namespace != null) {
@@ -101,7 +109,7 @@ abstract class RaisedSearchMetadata {
                 uploader,
                 extra,
                 indexedExtra,
-                0
+                0,
             ),
             tags.map {
                 SearchTag(
@@ -109,7 +117,7 @@ abstract class RaisedSearchMetadata {
                     mangaId,
                     it.namespace,
                     it.name,
-                    it.type
+                    it.type,
                 )
             },
             titles.map {
@@ -117,9 +125,9 @@ abstract class RaisedSearchMetadata {
                     null,
                     mangaId,
                     it.title,
-                    it.type
+                    it.type,
                 )
-            }
+            },
         )
     }
 

@@ -14,7 +14,10 @@ import exh.md.utils.MdConstants
 import exh.md.utils.MdUtil
 import exh.md.utils.mdListCall
 import exh.metadata.metadata.MangaDexSearchMetadata
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import rx.Observable
 import tachiyomi.source.model.ChapterInfo
 import tachiyomi.source.model.MangaInfo
@@ -23,27 +26,44 @@ class MangaHandler(
     private val lang: String,
     private val service: MangaDexService,
     private val apiMangaParser: ApiMangaParser,
-    private val followsHandler: FollowsHandler
+    private val followsHandler: FollowsHandler,
 ) {
-    suspend fun getMangaDetails(manga: MangaInfo, sourceId: Long, forceLatestCovers: Boolean): MangaInfo {
-        val response = withIOContext { service.viewManga(MdUtil.getMangaId(manga.key)) }
-        return apiMangaParser.parseToManga(manga, response, sourceId)
+    suspend fun getMangaDetails(manga: MangaInfo, sourceId: Long): MangaInfo {
+        return coroutineScope {
+            val mangaId = MdUtil.getMangaId(manga.key)
+            val response = async(Dispatchers.IO) { service.viewManga(mangaId) }
+            val simpleChapters = async(Dispatchers.IO) { getSimpleChapters(manga) }
+            val statistics = async(Dispatchers.IO) { service.mangasRating(mangaId).statistics[mangaId] }
+            apiMangaParser.parseToManga(
+                manga,
+                sourceId,
+                response.await(),
+                simpleChapters.await(),
+                statistics.await(),
+            )
+        }
     }
 
-    fun fetchMangaDetailsObservable(manga: SManga, sourceId: Long, forceLatestCovers: Boolean): Observable<SManga> {
-        return runAsObservable({
-            getMangaDetails(manga.toMangaInfo(), sourceId, forceLatestCovers).toSManga()
-        })
+    fun fetchMangaDetailsObservable(manga: SManga, sourceId: Long): Observable<SManga> {
+        return runAsObservable {
+            getMangaDetails(manga.toMangaInfo(), sourceId).toSManga()
+        }
     }
 
-    fun fetchChapterListObservable(manga: SManga): Observable<List<SChapter>> = runAsObservable({
-        getChapterList(manga.toMangaInfo()).map { it.toSChapter() }
-    })
+    fun fetchChapterListObservable(manga: SManga, blockedGroups: String, blockedUploaders: String): Observable<List<SChapter>> = runAsObservable {
+        getChapterList(manga.toMangaInfo(), blockedGroups, blockedUploaders).map { it.toSChapter() }
+    }
 
-    suspend fun getChapterList(manga: MangaInfo): List<ChapterInfo> {
+    suspend fun getChapterList(manga: MangaInfo, blockedGroups: String, blockedUploaders: String): List<ChapterInfo> {
         return withIOContext {
             val results = mdListCall {
-                service.viewChapters(MdUtil.getMangaId(manga.key), lang, it)
+                service.viewChapters(
+                    MdUtil.getMangaId(manga.key),
+                    lang,
+                    it,
+                    blockedGroups,
+                    blockedUploaders,
+                )
             }
 
             val groupMap = getGroupMap(results)
@@ -87,5 +107,18 @@ class MangaHandler(
         return withIOContext {
             apiMangaParser.chapterParseForMangaId(service.viewChapter(chapterId))
         }
+    }
+
+    private suspend fun getSimpleChapters(manga: MangaInfo): List<String> {
+        return runCatching { service.aggregateChapters(MdUtil.getMangaId(manga.key), lang) }
+            .onFailure {
+                if (it is CancellationException) throw it
+            }
+            .map { dto ->
+                dto.volumes.values
+                    .flatMap { it.chapters.values }
+                    .map { it.chapter }
+            }
+            .getOrElse { emptyList() }
     }
 }

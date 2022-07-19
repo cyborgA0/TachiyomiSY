@@ -6,10 +6,10 @@ import android.content.pm.PackageManager
 import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
-import timber.log.Timber
+import logcat.LogPriority
 
 object WebViewUtil {
-    const val REQUESTED_WITH = "com.android.browser"
+    const val SPOOF_PACKAGE_NAME = "org.chromium.chrome"
 
     const val MINIMUM_WEBVIEW_VERSION = 88
 
@@ -19,7 +19,7 @@ object WebViewUtil {
             // is not installed
             CookieManager.getInstance()
         } catch (e: Throwable) {
-            Timber.e(e)
+            logcat(LogPriority.ERROR, e)
             return false
         }
 
@@ -37,7 +37,6 @@ fun WebView.setDefaultSettings() {
         javaScriptEnabled = true
         domStorageEnabled = true
         databaseEnabled = true
-        setAppCacheEnabled(true)
         useWideViewPort = true
         loadWithOverviewMode = true
         cacheMode = WebSettings.LOAD_DEFAULT

@@ -1,10 +1,8 @@
 package eu.kanade.tachiyomi.ui.library
 
 import android.view.View
-import androidx.recyclerview.widget.RecyclerView
 import androidx.viewbinding.ViewBinding
 import eu.davidea.flexibleadapter.FlexibleAdapter
-import eu.davidea.flexibleadapter.items.IFlexible
 import eu.davidea.viewholders.FlexibleViewHolder
 
 /**
@@ -16,9 +14,7 @@ import eu.davidea.viewholders.FlexibleViewHolder
 
 abstract class LibraryHolder<VB : ViewBinding>(
     view: View,
-    // SY -->
-    val adapter: FlexibleAdapter<IFlexible<RecyclerView.ViewHolder>>
-    // SY <--
+    val adapter: FlexibleAdapter<*>,
 ) : FlexibleViewHolder(view, adapter) {
 
     abstract val binding: VB
@@ -32,16 +28,6 @@ abstract class LibraryHolder<VB : ViewBinding>(
     abstract fun onSetValues(item: LibraryItem)
 
     // SY -->
-    /**
-     * Called when an item is released.
-     *
-     * @param position The position of the released item.
-     */
-    override fun onItemReleased(position: Int) {
-        super.onItemReleased(position)
-        (adapter as? LibraryCategoryAdapter)?.onItemReleaseListener?.onItemReleased(position)
-    }
-
     override fun onLongClick(view: View?): Boolean {
         return if (adapter.isLongPressDragEnabled) {
             super.onLongClick(view)

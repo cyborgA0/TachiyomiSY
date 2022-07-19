@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Actions -->
-    <string name="action_sort_first_checked">First checked</string>
     <string name="action_sort_drag_and_drop">Drag &amp; Drop</string>
     <string name="action_sort_enabled">Enabled</string>
     <string name="action_skip_manga">Don\'t migrate</string>
@@ -148,8 +147,9 @@
     </plurals>
     <string name="data_saver">Data Saver</string>
     <string name="data_saver_summary">Compress images before downloading or loading in reader, requires a Bandwidth Hero Proxy server</string>
-    <string name="ignore_jpeg">Ignore Jpeg Images</string>
-    <string name="ignore_gif">Ignore Gif Animations</string>
+    <string name="data_saver_downloader">Use data saver in the downloader</string>
+    <string name="data_saver_ignore_jpeg">Ignore Jpeg Images</string>
+    <string name="data_saver_ignore_gif">Ignore Gif Animations</string>
     <string name="data_saver_image_quality">Image Quality</string>
     <string name="data_saver_image_quality_summary">Higher values mean that a higher percentage of the image quality is saved, but it also means the file size is larger, 80 percent is a good median between file size and image quality</string>
     <string name="data_saver_image_format">Compress to Jpeg</string>
@@ -158,7 +158,6 @@
     <string name="data_saver_color_bw">Convert to Black And White</string>
     <string name="data_saver_server">Bandwidth Hero Proxy Server</string>
     <string name="data_saver_server_summary">Put Bandwidth Hero Proxy server url here</string>
-    <string name="update_monthly">Monthly</string>
     <string name="clear_db_exclude_read">Keep manga with read chapters</string>
 
     <!-- Log Level -->
@@ -175,9 +174,8 @@
     <string name="auto_solve_captchas_summary">Use HIGHLY EXPERIMENTAL automatic ReCAPTCHA solver. Will be grayed out if unsupported by your device.</string>
     <string name="put_recommends_in_overflow">Recommendations in overflow</string>
     <string name="put_recommends_in_overflow_summary">Put the recommendations button in the overflow menu instead of on the manga page</string>
-    
+
     <!-- Appearance Settings -->
-    <string name="theme_pure_red">Pure Red</string>
     <string name="pref_category_navbar">Navbar</string>
     <string name="pref_hide_updates_button">Show updates in the nav</string>
     <string name="pref_hide_history_button">Show history in the nav</string>
@@ -194,8 +192,8 @@
     <string name="library_group_updates_all">Launch category updates all the time</string>
 
     <!-- Browse settings -->
-    <string name="pref_latest_position">Latest tab position</string>
-    <string name="pref_latest_position_summery">Do you want the latest tab to be the first tab in browse? This will make it the default tab when opening browse, not recommended if you\'re on data or a metered network</string>
+    <string name="pref_feed_position">Feed tab position</string>
+    <string name="pref_feed_position_summery">Do you want the feed tab to be the first tab in browse? This will make it the default tab when opening browse, not recommended if you\'re on data or a metered network</string>
     <string name="pref_source_source_filtering">Filter sources in categories</string>
     <string name="pref_source_source_filtering_summery">Filter the sources that are in categories, making the sources not get put under the language if they are in a category</string>
     <string name="pref_source_navigation">Replace latest button</string>
@@ -206,10 +204,6 @@
     <!-- Backup settings -->
     <string name="custom_manga_info">Custom manga info</string>
     <string name="all_read_manga">All read manga</string>
-
-    <!-- Download settings -->
-    <string name="save_chapter_as_cbz">Save Chapters as CBZ</string>
-    <string name="save_chapter_as_cbz_level">CBZ Compression level</string>
 
     <!-- Security settings -->
     <string name="biometric_lock_times">Biometric lock times</string>
@@ -223,7 +217,6 @@
     <string name="biometric_lock_start_time">Enter starting time</string>
     <string name="biometric_lock_end_time">Enter end time</string>
     <string name="biometric_lock_time_deleted_snack">Biometric lock time deleted</string>
-    <string name="biometric_lock_invalid_time_selected">Invalid time selected</string>
     <string name="biometric_lock_days">Biometric lock days</string>
     <string name="biometric_lock_days_summary">Days to have the app locked</string>
 
@@ -251,7 +244,6 @@
     <string name="reader_preload_amount_12_pages">12 Pages</string>
     <string name="reader_preload_amount_14_pages">14 Pages</string>
     <string name="reader_preload_amount_16_pages">16 Pages</string>
-    <string name="reader_preload_amount_18_pages">18 Pages</string>
     <string name="reader_preload_amount_20_pages">20 Pages</string>
     <string name="reader_preload_amount_summary">The amount of pages to preload when reading. Higher values will result in a smoother reading experience, at the cost of higher cache usage, it is recommended to increase the amount of cache you allocate when using larger values</string>
     <string name="reader_cache_size">Reader cache size</string>
@@ -279,10 +271,22 @@
     <string name="eh_boost_page">Boost page</string>
     <string name="eh_autoscroll_help">Autoscroll help</string>
     <string name="eh_autoscroll_help_message">Automatically scroll to the next page in the specified interval. Interval is specified in seconds.</string>
+    <string name="eh_autoscroll_freq_invalid">Invalid frequency</string>
     <string name="eh_retry_all_help">Retry all help</string>
     <string name="eh_retry_all_help_message">Re-add all failed pages to the download queue.</string>
+    <plurals name="eh_retry_toast">
+        <item quantity="zero">Retrying 0 failed pages…</item>
+        <item quantity="one">Retrying %1$d failed page…</item>
+        <item quantity="other">Retrying %1$d failed pages…</item>
+    </plurals>
     <string name="eh_boost_page_help">Boost page help</string>
     <string name="eh_boost_page_help_message">Normally the downloader can only download a specific amount of pages at the same time. This means you can be waiting for a page to download but the downloader will not start downloading the page until it has a free download slot. Pressing \'Boost page\' will force the downloader to begin downloading the current page, regardless of whether or not there is an available slot.</string>
+    <string name="eh_boost_page_invalid">This page cannot be boosted (invalid page)!</string>
+    <string name="eh_boost_page_errored">Page failed to load, press the retry button instead!</string>
+    <string name="eh_boost_page_downloading">This page is already downloading!</string>
+    <string name="eh_boost_page_downloaded">This page has already been downloaded!</string>
+    <string name="eh_boost_boosted">Boosted current page!</string>
+    <string name="eh_boost_invalid_loader">This page cannot be boosted (invalid page loader)!</string>
     <string name="pref_crop_borders_pager">Crop borders Pager</string>
     <string name="pref_crop_borders_continuous_vertical">Crop borders Continuous Vertical</string>
     <string name="pref_crop_borders_webtoon">Crop borders Webtoon</string>
@@ -315,24 +319,30 @@
     <string name="az_recommends">See Recommendations</string>
     <string name="merge">Merge</string>
     <string name="merge_with_another_source">Merge With Another</string>
-
-    <!-- Manga info fragment -->
-    <string name="hiatus">Hiatus</string>
-    <string name="cancelled">Cancelled</string>
-    <string name="publication_complete">Publication Complete</string>
+    <string name="manga_merged">Manga merged!</string>
+    <string name="failed_merge">Failed to merge manga: %1$s</string>
+    <string name="merge_unknown_manga">Unknown manga ID: %1$d</string>
+    <string name="merged_already">This manga is already merged with the current manga!</string>
+    <string name="merge_duplicate">This merged manga is a duplicate!</string>
 
     <!-- Manga Info Edit -->
     <string name="reset_tags">Reset Tags</string>
-    <string name="reset_cover">Reset Cover</string>
     <string name="add_tag">Add Tag</string>
-    <string name="cover_reset_toast">The cover will be updated when you exit manga info edit</string>
+    <string name="title_hint">Title: %1$s</string>
+    <string name="description_hint">Description: %1$s</string>
+    <string name="author_hint">Author: %1$s</string>
+    <string name="artist_hint">Artist: %1$s</string>
 
     <!-- Browse -->
     <!-- Sources Tab -->
     <string name="find_in_another_source">Find in another source</string>
+    <string name="data_saver_exclude">Exclude from data saver</string>
+    <string name="data_saver_stop_exclude">Stop excluding from data saver</string>
 
     <!-- Smart Search -->
     <string name="searching_source">Searching source…</string>
+    <string name="could_not_find_manga">Couldn\'t find the manga in the source!</string>
+    <string name="automatic_search_error">Error performing automatic search!</string>
 
     <!-- Saved Searches -->
     <string name="saved_searches">Saved Searches</string>
@@ -345,16 +355,18 @@
     <string name="save_search_delete">Delete saved search query?</string>
     <string name="save_search_delete_message">Are you sure you wish to delete your saved search query: \'%1$s\'?</string>
     <string name="save_search_invalid">Saved search invalid, filters have changed</string>
+    <string name="save_search_invalid_name">Invalid saved search name</string>
 
     <!-- Source Categories -->
     <string name="no_source_categories">No source categories available</string>
     <string name="invalid_category_name">Invalid category name</string>
 
-    <!-- Latest Tab -->
-    <string name="watch">Watch</string>
-    <string name="unwatch">Unwatch</string>
-    <string name="too_many_watched">Too many watched sources, cannot add more then 5</string>
-    <string name="latest_tab_empty">You don\'t have any watched sources, go to the sources tab and long press a source to watch it</string>
+    <!-- Feed Tab -->
+    <string name="feed">Feed</string>
+    <string name="feed_delete">Delete feed item?</string>
+    <string name="too_many_in_feed">Too many sources in your feed, cannot add more then 10</string>
+    <string name="feed_tab_empty">You don\'t have any sources in your feed, navigate to the top right to add one</string>
+    <string name="feed_add">Add %1$s to feed?</string>
 
     <!-- Sort by tags -->
     <string name="pref_tag_sorting">Tag sorting tags</string>
@@ -364,13 +376,13 @@
         <item quantity="one">%1$d tag in sorting list. This adds a option in the library to sort by a priority based tag list, which means manga will be sorted in a way to prioritise the ones with the tags you want</item>
         <item quantity="other">%1$d tags in sorting list. This adds a option in the library to sort by a priority based tag list, which means manga will be sorted in a way to prioritise the ones with the tags you want</item>
     </plurals>
-    <string name="pref_tag_sorting_desc">Tag sorting list</string>
-    <string name="action_add_tags">Add tag</string>
     <string name="action_add_tags_message">Read this! Tags must be exact, there are no partial matches, you cannot do netorare to filter out female:netorare or similar!\nThe style for namespace tags is\n\"female: sole female\"\nwithout quotes!\nAdding multiple variants of the same tag is supported, so feel free to do \"tag: netorare\" for NHentai and \"female: netorare\" for E-Hentai!</string>
     <string name="action_edit_tags">Edit tags</string>
     <string name="information_empty_tags">You have no tags. Tap the plus button to create one for sorting your library by tags</string>
     <string name="error_tag_exists">This tag exists!</string>
     <string name="snack_tags_deleted">Tags deleted</string>
+    <string name="delete_tag">Delete tag</string>
+    <string name="delete_tag_confirmation">Do you wish to delete the tag %s</string>
 
     <!-- Extension section -->
     <string name="ext_redundant">Redundant</string>
@@ -389,6 +401,8 @@
     <string name="snack_repo_deleted">Repo deleted</string>
     <string name="invalid_repo_name">Invalid repo name</string>
     <string name="repo_source">Repo source</string>
+    <string name="delete_repo">Delete repo</string>
+    <string name="delete_repo_confirmation">Do you wish to delete the repo %s</string>
 
     <!-- Migration -->
     <string name="select_sources">Select sources</string>
@@ -433,7 +447,6 @@
     <string name="no_valid_manga">No valid manga selected</string>
 
     <!-- Library Sheet -->
-    <string name="tracked">Tracked</string>
     <string name="lewd">Lewd</string>
     <string name="started">Started</string>
 
@@ -482,6 +495,7 @@
     <string name="favorites_sync_notes_message"><![CDATA[1. Changes to category names in the app are <b>NOT</b> synced! Please <i>change the category names on ExHentai instead</i>. The category names will be copied from the ExHentai servers every sync.<br><br>2. The favorite categories on ExHentai correspond to the <b>first 10 categories in the app</b> (excluding the \'Default\' category). <i>Galleries in other categories will <b>NOT</b> be synced!</i><br><br>3. <font color=\'red\'><b>ENSURE YOU HAVE A STABLE INTERNET CONNECTION WHEN SYNC IS IN PROGRESS!</b></font> If the internet disconnects while the app is syncing, your favorites may be left in a <i>partially-synced state</i>.<br><br>4. Keep the app open while favorites are syncing. Android will close apps that are in the background sometimes and that could be bad if it happens while the app is syncing.<br><br>5. <b>Do NOT put favorites in multiple categories</b> (the app supports this). This can confuse the sync algorithm as ExHentai only allows each favorite to be in one category.<br><br>This dialog will only popup once. You can read these notes again by going to \'Settings > E-Hentai > Show favorites sync notes\'.]]></string>
     <string name="favorites_sync_reset">Are you sure?</string>
     <string name="favorites_sync_reset_message">Resetting the sync state can cause your next sync to be extremely slow.</string>
+    <string name="favorites_sync_conformation_message">Are you sure you wish to sync your favorites with E-Hentai?</string>
 
     <!-- Gallery Adder -->
     <!-- Batch Add -->
@@ -566,8 +580,6 @@
     <string name="last_update_check">Last update check</string>
     <string name="path">Path</string>
     <string name="artist">Artist</string>
-    <string name="reader_id">Reader id</string>
-    <string name="series">Series</string>
     <string name="characters">Characters</string>
     <string name="group">Group</string>
     <string name="media_id">Media id</string>
@@ -586,7 +598,6 @@
     <string name="parodies">Parodies</string>
     <string name="author">Author</string>
     <string name="last_chapter_number">Last chapter number</string>
-    <string name="missing_chapters">Missing chapters</string>
     <string name="follow_status">Follow status</string>
     <string name="anilist_id">Anilist id</string>
     <string name="kitsu_id">Kitsu id</string>
@@ -600,7 +611,6 @@
         <item quantity="one">%1$d page</item>
         <item quantity="other">%1$d pages</item>
     </plurals>
-    <string name="tags">Tags</string>
     <string name="is_visible">Visible: %1$s</string>
     <string name="language_translated">%1$s TR</string>
 
@@ -630,6 +640,10 @@
     <string name="manga_info_manga">Info manga:</string>
     <string name="toggle_dedupe">Toggle dedupe</string>
     <string name="refresh_merge">Refresh to get proper info</string>
+    <string name="no_dedupe">No dedupe</string>
+    <string name="dedupe_priority">Dedupe by priority</string>
+    <string name="dedupe_most_chapters">Show source with most chapters</string>
+    <string name="dedupe_highest_chapter">Show source with highest chapter number</string>
 
     <!-- MangaDex -->
     <string name="mdlist">MDList</string>
@@ -637,10 +651,6 @@
     <string name="mangadex_specific_settings">MangaDex settings</string>
     <string name="mangadex_sync_follows_to_library">Sync Mangadex manga to your library</string>
     <string name="mangadex_sync_follows_to_library_summary">Pulls manga from MangaDex into your library if they are not already added.</string>
-    <string name="mangadex_sync_follows_to_library_message">Select the status of manga to be pulled from Mangadex</string>
-    <string name="mangadex_low_quality_covers">Use low quality thumbnails</string>
-    <string name="mangadex_use_latest_cover">Use latest uploaded cover</string>
-    <string name="mangadex_use_latest_cover_summary">When enabled, it uses the latest uploaded manga cover under the /covers url instead of using the cover on MangaDex\'s manga page</string>
     <string name="mangadex_preffered_source">Preferred MangaDex source</string>
     <string name="mangadex_preffered_source_summary">Set your chosen mangadex source, this will be used for follows and a bunch more features around the app</string>
     <string name="two_factor">2FA Code</string>
@@ -650,49 +660,34 @@
     <string name="random">Random</string>
     <string name="mangadex_push_favorites_to_mangadex">Sync library manga to MangaDex</string>
     <string name="mangadex_push_favorites_to_mangadex_summary">Syncs any non MdList tracked manga to MangaDex as reading.</string>
-    <string name="mangadex_push_favorites_to_mangadex_toast">Pushed %d manga to MangaDex</string>
-
+    <string name="mangadex_similar">MangaDex similar</string>
+    <string name="community_recommendations">Community recommendations</string>
 
     <!-- Scanlator filters -->
     <string name="select_scanlators">Scanlator groups to show</string>
-    <string name="metadata_corrupted">Metadata corrupted, please refresh the manga</string>
-    <string name="no_scanlators">No scanlators available</string>
 
     <!-- Similar -->
     <string name="similar">Similar to %1$s</string>
-    <string name="similar_manga">Similar Manga</string>
-    <string name="similar_loading_percent">Updating similar manga (%1$d / %2$d updated)</string>
-    <string name="similar_loading_complete">Updating similar manga complete</string>
-    <string name="similar_loading_complete_error">Error trying to load/process similar manga</string>
-    <string name="similar_loading_progress_start">Downloading similar manga data file…</string>
-    <string name="similar_ask_to_enable_title">Enable Similar Manga?</string>
-    <string name="similar_ask_to_enable">
-        Would you like to enable similar manga recommendations?
-        This will download approximately 9 MB of data if enabled right now.
-        You can always enable it in the Settings / Mangadex menu.
-    </string>
-    <string name="similar_ask_to_enable_yes">Enable</string>
-    <string name="similar_ask_to_enable_no">Skip</string>
-    <string name="similar_settings">Similar Manga Settings</string>
-    <string name="similar_screen">Show similar manga</string>
-    <string name="similar_manually_update">Pull latest database</string>
-    <string name="similar_manually_toast">Starting manual update</string>
-    <string name="similar_manually_update_message">
-        Download the latest similar manga database.
-        This is around 9MB in size and is updated daily.
-    </string>
-    <string name="similar_update_fequency">Similar update frequency</string>
-    <string name="similar_screen_summary_message">
-        This is a feature where one can get manga recommendations.
-        This is a recommendation system outside of MangaDex, and works by matching by genres,
-        demographics, content type, themes, and then using term frequency–inverse document frequency (tf–idf) to get the
-        similarity of two manga\'s descriptions. When enabled this file will download immediately!! The file is about 9 MB in size.
-    </string>
-    <string name="similar_credit">Credits</string>
-    <string name="similar_credit_message">
-        For more information and to view the source code:\n%s
-    </string>
     <string name="similar_no_results">No Similar Manga found</string>
+
+    <!-- Mangadex relations-->
+    <string name="relation_similar">Similar</string>
+    <string name="relation_monochrome">Monochrome</string>
+    <string name="relation_main_story">Main story</string>
+    <string name="relation_adapted_from">Adapted from</string>
+    <string name="relation_based_on">Based on</string>
+    <string name="relation_prequel">Prequel</string>
+    <string name="relation_side_story">Side story</string>
+    <string name="relation_doujinshi">Doujinshi</string>
+    <string name="relation_same_franchise">Same franchise</string>
+    <string name="relation_shared_universe">Shared universe</string>
+    <string name="relation_sequel">Sequel</string>
+    <string name="relation_spin_off">Spin-off</string>
+    <string name="relation_alternate_story">Alternate story</string>
+    <string name="relation_preserialization">Pre-serialization</string>
+    <string name="relation_colored">Colored</string>
+    <string name="relation_serialization">Serialization</string>
+    <string name="relation_alternate_version">Alternate version</string>
 
     <!-- Humanize time -->
     <plurals name="humanize_year">
@@ -721,7 +716,7 @@
     </plurals>
     <plurals name="humanize_second">
         <item quantity="one">%1$d second ago</item>
-        <item quantity="other">%1$d second ago</item>
+        <item quantity="other">%1$d seconds ago</item>
     </plurals>
     <string name="humanize_fallback">moments ago</string>
 

@@ -2,12 +2,12 @@ package eu.kanade.tachiyomi.ui.browse.source.browse
 
 import android.view.View
 import androidx.core.view.isVisible
-import coil.clear
-import coil.loadAny
+import coil.dispose
+import coil.load
 import eu.davidea.flexibleadapter.FlexibleAdapter
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.coil.MangaCoverFetcher
-import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.databinding.SourceListItemBinding
 import eu.kanade.tachiyomi.util.system.getResourceColor
 import exh.metadata.metadata.MangaDexSearchMetadata
@@ -58,14 +58,18 @@ class SourceListHolder(private val view: View, adapter: FlexibleAdapter<*>) :
                 binding.localText.text = itemView.context.resources.getStringArray(R.array.md_follows_options).asList()[it]
                 binding.localText.isVisible = true
             }
+            metadata.relation?.let {
+                binding.localText.setText(it.resId)
+                binding.localText.isVisible = true
+            }
         }
     }
     // SY <--
 
     override fun setImage(manga: Manga) {
-        binding.thumbnail.clear()
-        if (!manga.thumbnail_url.isNullOrEmpty()) {
-            binding.thumbnail.loadAny(manga) {
+        binding.thumbnail.dispose()
+        if (!manga.thumbnailUrl.isNullOrEmpty()) {
+            binding.thumbnail.load(manga) {
                 setParameter(MangaCoverFetcher.USE_CUSTOM_COVER, false)
             }
         }

@@ -10,13 +10,13 @@ import androidx.appcompat.widget.SearchView
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
 import dev.chrisbanes.insetter.applyInsetter
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.databinding.GlobalSearchControllerBinding
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.ui.base.controller.SearchableNucleusController
-import eu.kanade.tachiyomi.ui.base.controller.withFadeTransaction
+import eu.kanade.tachiyomi.ui.base.controller.pushController
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceController
 import eu.kanade.tachiyomi.ui.manga.MangaController
 import uy.kohesive.injekt.injectLazy
@@ -29,7 +29,7 @@ import uy.kohesive.injekt.injectLazy
 open class GlobalSearchController(
     protected val initialQuery: String? = null,
     protected val extensionFilter: String? = null,
-    bundle: Bundle? = null
+    bundle: Bundle? = null,
 ) : SearchableNucleusController<GlobalSearchControllerBinding, GlobalSearchPresenter>(bundle),
     GlobalSearchCardAdapter.OnMangaClickListener,
     GlobalSearchAdapter.OnTitleClickListener {
@@ -71,7 +71,7 @@ open class GlobalSearchController(
      * @param manga clicked item containing manga information.
      */
     override fun onMangaClick(manga: Manga) {
-        router.pushController(MangaController(manga, true).withFadeTransaction())
+        router.pushController(MangaController(manga.id, true))
     }
 
     /**
@@ -97,7 +97,7 @@ open class GlobalSearchController(
             R.menu.global_search,
             R.id.action_search,
             null,
-            false // the onMenuItemActionExpand will handle this
+            false, // the onMenuItemActionExpand will handle this
         )
 
         optionsMenuSearchItem = menu.findItem(R.id.action_search)
@@ -210,7 +210,9 @@ open class GlobalSearchController(
      * Opens a catalogue with the given search.
      */
     override fun onTitleClick(source: CatalogueSource) {
-        presenter.preferences.lastUsedSource().set(source.id)
-        router.pushController(BrowseSourceController(source, presenter.query).withFadeTransaction())
+        if (!preferences.incognitoMode().get()) {
+            preferences.lastUsedSource().set(source.id)
+        }
+        router.pushController(BrowseSourceController(source, presenter.query))
     }
 }

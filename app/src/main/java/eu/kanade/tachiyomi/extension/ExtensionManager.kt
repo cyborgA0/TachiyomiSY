@@ -4,9 +4,9 @@ import android.content.Context
 import android.graphics.drawable.Drawable
 import androidx.core.content.ContextCompat
 import com.jakewharton.rxrelay.BehaviorRelay
+import eu.kanade.domain.source.model.SourceData
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
-import eu.kanade.tachiyomi.data.preference.plusAssign
 import eu.kanade.tachiyomi.extension.api.ExtensionGithubApi
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
@@ -17,6 +17,8 @@ import eu.kanade.tachiyomi.extension.util.ExtensionLoader
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.util.lang.launchNow
+import eu.kanade.tachiyomi.util.preference.plusAssign
+import eu.kanade.tachiyomi.util.system.logcat
 import eu.kanade.tachiyomi.util.system.toast
 import exh.log.xLogD
 import exh.source.BlacklistedSources
@@ -24,6 +26,7 @@ import exh.source.EH_SOURCE_ID
 import exh.source.EXH_SOURCE_ID
 import exh.source.MERGED_SOURCE_ID
 import kotlinx.coroutines.async
+import logcat.LogPriority
 import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -40,7 +43,7 @@ import uy.kohesive.injekt.api.get
  */
 class ExtensionManager(
     private val context: Context,
-    private val preferences: PreferencesHelper = Injekt.get()
+    private val preferences: PreferencesHelper = Injekt.get(),
 ) {
 
     /**
@@ -70,13 +73,17 @@ class ExtensionManager(
         }
 
     fun getAppIconForSource(source: Source): Drawable? {
-        val pkgName = installedExtensions.find { ext -> ext.sources.any { it.id == source.id } }?.pkgName
+        return getAppIconForSource(source.id)
+    }
+
+    fun getAppIconForSource(sourceId: Long): Drawable? {
+        val pkgName = installedExtensions.find { ext -> ext.sources.any { it.id == sourceId } }?.pkgName
         if (pkgName != null) {
             return iconMap[pkgName] ?: iconMap.getOrPut(pkgName) { context.packageManager.getApplicationIcon(pkgName) }
         }
 
         // SY -->
-        return when (source.id) {
+        return when (sourceId) {
             EH_SOURCE_ID -> ContextCompat.getDrawable(context, R.mipmap.ic_ehentai_source)
             EXH_SOURCE_ID -> ContextCompat.getDrawable(context, R.mipmap.ic_ehentai_source)
             MERGED_SOURCE_ID -> ContextCompat.getDrawable(context, R.mipmap.ic_merged_source)
@@ -98,7 +105,19 @@ class ExtensionManager(
             field = value
             availableExtensionsRelay.call(value)
             updatedInstalledExtensionsStatuses(value)
+            setupAvailableExtensionsSourcesDataMap(value)
         }
+
+    private var availableExtensionsSourcesData: Map<Long, SourceData> = mapOf()
+
+    private fun setupAvailableExtensionsSourcesDataMap(extensions: List<Extension.Available>) {
+        if (extensions.isEmpty()) return
+        availableExtensionsSourcesData = extensions
+            .flatMap { ext -> ext.sources.map { it.toSourceData() } }
+            .associateBy { it.id }
+    }
+
+    fun getSourceData(id: Long) = availableExtensionsSourcesData[id]
 
     // SY -->
     var unalteredAvailableExtensions = emptyList<Extension.Available>()
@@ -198,7 +217,8 @@ class ExtensionManager(
             val extensions: List<Extension.Available> = try {
                 api.findExtensions()
             } catch (e: Exception) {
-                context.toast(e.message)
+                logcat(LogPriority.ERROR, e)
+                context.toast(R.string.extension_api_error)
                 emptyList()
             }
 
@@ -238,7 +258,9 @@ class ExtensionManager(
                 changed = true
                 // SY <--
             } else if (availableExt != null) {
-                val hasUpdate = availableExt.versionCode > installedExt.versionCode
+                val hasUpdate = !installedExt.isUnofficial &&
+                    availableExt.versionCode > installedExt.versionCode
+
                 if (installedExt.hasUpdate != hasUpdate) {
                     mutInstalledExtensions[index] = installedExt.copy(hasUpdate = hasUpdate)
                     changed = true
@@ -286,11 +308,6 @@ class ExtensionManager(
      */
     fun setInstalling(downloadId: Long) {
         installer.updateInstallStep(downloadId, InstallStep.Installing)
-    }
-
-    fun setInstallationResult(downloadId: Long, result: Boolean) {
-        val step = if (result) InstallStep.Installed else InstallStep.Error
-        installer.updateInstallStep(downloadId, step)
     }
 
     fun updateInstallStep(downloadId: Long, step: InstallStep) {
@@ -427,7 +444,7 @@ class ExtensionManager(
      */
     private fun Extension.Installed.withUpdateCheck(): Extension.Installed {
         val availableExt = availableExtensions.find { it.pkgName == pkgName }
-        if (availableExt != null && availableExt.versionCode > versionCode) {
+        if (isUnofficial.not() && availableExt != null && availableExt.versionCode > versionCode) {
             return copy(hasUpdate = true)
         }
         return this

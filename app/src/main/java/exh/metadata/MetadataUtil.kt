@@ -62,7 +62,7 @@ object MetadataUtil {
         "(wip)",
         "{wip}",
         "<wip>",
-        "wip"
+        "wip",
     )
 
     val EX_DATE_FORMAT = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
@@ -100,11 +100,9 @@ object MetadataUtil {
         "webtoon" -> SourceTagsUtil.GenreColor.NON_H_COLOR to R.string.webtoon
         "Video" -> SourceTagsUtil.GenreColor.WESTERN_COLOR to R.string.video
         else -> null
-    }?.let { it.first.color to context.getString(it.second) }
-}
-
-fun <K, V> Set<Map.Entry<K, V>>.forEach(action: (K, V) -> Unit) {
-    forEach { action(it.key, it.value) }
+    }?.let { (genreColor, stringId) ->
+        genreColor.color to context.getString(stringId)
+    }
 }
 
 fun TextView.bindDrawable(context: Context, @DrawableRes drawable: Int) {

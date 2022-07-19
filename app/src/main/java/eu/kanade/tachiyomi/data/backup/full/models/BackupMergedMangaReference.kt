@@ -16,7 +16,7 @@ data class BackupMergedMangaReference(
     @ProtoNumber(5) var downloadChapters: Boolean,
     @ProtoNumber(6) var mergeUrl: String,
     @ProtoNumber(7) var mangaUrl: String,
-    @ProtoNumber(8) var mangaSourceId: Long
+    @ProtoNumber(8) var mangaSourceId: Long,
 ) {
     fun getMergedMangaReference(): MergedMangaReference {
         return MergedMangaReference(
@@ -30,22 +30,31 @@ data class BackupMergedMangaReference(
             mangaSourceId = mangaSourceId,
             mergeId = null,
             mangaId = null,
-            id = null
+            id = null,
         )
     }
+}
 
-    companion object {
-        fun copyFrom(mergedMangaReference: MergedMangaReference): BackupMergedMangaReference {
-            return BackupMergedMangaReference(
-                isInfoManga = mergedMangaReference.isInfoManga,
-                getChapterUpdates = mergedMangaReference.getChapterUpdates,
-                chapterSortMode = mergedMangaReference.chapterSortMode,
-                chapterPriority = mergedMangaReference.chapterPriority,
-                downloadChapters = mergedMangaReference.downloadChapters,
-                mergeUrl = mergedMangaReference.mergeUrl,
-                mangaUrl = mergedMangaReference.mangaUrl,
-                mangaSourceId = mergedMangaReference.mangaSourceId
-            )
-        }
-    }
+val backupMergedMangaReferenceMapper = {
+        _: Long,
+        isInfoManga: Boolean,
+        getChapterUpdates: Boolean,
+        chapterSortMode: Long,
+        chapterPriority: Long,
+        downloadChapters: Boolean,
+        _: Long,
+        mergeUrl: String,
+        _: Long?,
+        mangaUrl: String,
+        mangaSourceId: Long,  ->
+    BackupMergedMangaReference(
+        isInfoManga = isInfoManga,
+        getChapterUpdates = getChapterUpdates,
+        chapterSortMode = chapterSortMode.toInt(),
+        chapterPriority = chapterPriority.toInt(),
+        downloadChapters = downloadChapters,
+        mergeUrl = mergeUrl,
+        mangaUrl = mangaUrl,
+        mangaSourceId = mangaSourceId,
+    )
 }

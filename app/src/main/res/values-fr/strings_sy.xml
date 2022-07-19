@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <resources>
     <!-- Actions -->
-    <string name="action_sort_first_checked">Première vérification</string>
     <string name="action_sort_drag_and_drop">Glisser-déposer</string>
     <string name="action_sort_enabled">Activé</string>
     <string name="action_skip_manga">Ne migrez pas</string>
@@ -143,8 +142,8 @@
     </plurals>
     <string name="data_saver">Économiseur de données</string>
     <string name="data_saver_summary">Compresser les images avant le téléchargement ou le chargement dans le lecteur, nécessite un serveur Proxy Bandwidth Hero</string>
-    <string name="ignore_jpeg">Ignorer les images Jpeg</string>
-    <string name="ignore_gif">Ignorer les animations Gif</string>
+    <string name="data_saver_ignore_jpeg">Ignorer les images Jpeg</string>
+    <string name="data_saver_ignore_gif">Ignorer les animations Gif</string>
     <string name="data_saver_image_quality">Qualité d\'image</string>
     <string name="data_saver_image_quality_summary">Des valeurs plus élevées signifient qu\'un pourcentage plus élevé de la qualité d\'image est enregistré, mais cela signifie également que la taille du fichier est plus grande, 80 \% est une bonne médiane entre la taille du fichier et la qualité de l\'image</string>
     <string name="data_saver_image_format">Compresser en Jpeg</string>
@@ -180,16 +179,10 @@
     <string name="library_group_updates_all">Lancer des mises à jour de catégorie tout le temps</string>
 
     <!-- Browse settings -->
-    <string name="pref_latest_position">Dernière position de l\'onglet</string>
-    <string name="pref_latest_position_summery">Voulez-vous que le dernier onglet soit le premier onglet de la navigation? Cela en fera l\'onglet par défaut lors de l\'ouverture de la navigation, non recommandé si vous êtes sur des données ou un réseau mesuré</string>
     <string name="pref_source_navigation">Remplacer le dernier bouton</string>
     <string name="pref_source_navigation_summery">Remplacer le dernier bouton par une vue de navigation personnalisée qui inclut à la fois la dernière et la navigation</string>
     <string name="pref_local_source_hidden_folders">Dossiers cachés de la source locale</string>
     <string name="pref_local_source_hidden_folders_summery">Autoriser la source locale à lire les dossiers cachés</string>
-
-    <!-- Download settings -->
-    <string name="save_chapter_as_cbz">Enregistrer les chapitres sous CBZ</string>
-    <string name="save_chapter_as_cbz_level">Niveau de compression CBZ</string>
 
     <!-- Security settings -->
     <string name="biometric_lock_times">Temps de verrouillage biométrique</string>
@@ -203,7 +196,6 @@
     <string name="biometric_lock_start_time">Entrez l\'heure de début</string>
     <string name="biometric_lock_end_time">Entrez l\'heure de fin</string>
     <string name="biometric_lock_time_deleted_snack">Temps de verrouillage biométrique terminé</string>
-    <string name="biometric_lock_invalid_time_selected">Heure sélectionnée invalide</string>
 
     <!-- Reader Settings -->
 <!--        <string name="download_threads">Download threads</string>-->
@@ -220,7 +212,6 @@
     <string name="reader_preload_amount_12_pages">12 Pages</string>
     <string name="reader_preload_amount_14_pages">14 Pages</string>
     <string name="reader_preload_amount_16_pages">16 Pages</string>
-    <string name="reader_preload_amount_18_pages">18 Pages</string>
     <string name="reader_preload_amount_20_pages">20 Pages</string>
     <string name="reader_preload_amount_summary">Le nombre de pages à précharger lors de la lecture. Des valeurs plus élevées se traduiront par une expérience de lecture plus fluide, au prix d\'une utilisation plus élevée du cache, il est recommandé d\'augmenter la quantité de cache que vous allouez lorsque vous utilisez des valeurs plus grandes</string>
     <string name="reader_cache_size">Taille du cache du lecteur</string>
@@ -254,16 +245,9 @@
     <string name="merge">Fusionner</string>
     <string name="merge_with_another_source">Fusionner avec une autre</string>
 
-    <!-- Manga info fragment -->
-    <string name="hiatus">Hiatus</string>
-    <string name="cancelled">Annulé</string>
-    <string name="publication_complete">Publication terminée</string>
-
     <!-- Manga Info Edit -->
     <string name="reset_tags">Réinitialiser les Tags</string>
-    <string name="reset_cover">Réinitialiser la couverture</string>
     <string name="add_tag">Ajouter un Tag</string>
-    <string name="cover_reset_toast">La couverture sera mise à jour lorsque vous quitterez les informations sur le manga Modifier</string>
 
     <!-- Browse -->
     <!-- Saved Searches -->
@@ -281,12 +265,6 @@
     <string name="no_source_categories">Aucune catégorie de source disponible</string>
     <string name="invalid_category_name">Nom de catégorie non valide</string>
 
-    <!-- Latest Tab -->
-    <string name="watch">Regarder</string>
-    <string name="unwatch">Non regarder</string>
-    <string name="too_many_watched">Trop de sources regardées, impossible d\'en ajouter plus de 5</string>
-    <string name="latest_tab_empty">Vous n\'avez pas de sources regardées, allez dans l\'onglet sources et appuyez longuement sur une source pour la regarder</string>
-
     <!-- Sort by tags -->
     <string name="pref_tag_sorting">Tag de tri des Tags</string>
     <string name="tag_sorting">Tri des tags</string>
@@ -295,8 +273,6 @@
         <item quantity="one">%1$d Tag dans la liste de tri. Cela ajoute une option dans la bibliothèque pour trier par une liste de tag basée sur la priorité, ce qui signifie que les mangas seront triés de manière à prioriser ceux avec les tag que vous voulez</item>
         <item quantity="other">%1$d Tags dans la liste de tri. Cela ajoute une option dans la bibliothèque pour trier par une liste de tags basée sur la priorité, ce qui signifie que les mangas seront triés de manière à prioriser ceux avec les tags que vous voulez</item>
     </plurals>
-    <string name="pref_tag_sorting_desc">Liste de tri des Tags</string>
-    <string name="action_add_tags">Ajouter une Tag</string>
     <string name="action_add_tags_message">Lis ça! Les Tags doivent être exactes, il n\'y a pas de correspondance partielle, vous ne pouvez pas faire netorare pour filtrer les femmes: netorare ou similaire!\nLe style des Tags sous forme "femme: seule femme" sans guillemets!\nL\'ajout de plusieurs variantes du même tag est pris en charge, alors n\'hésitez pas à faire "tag: netorare" pour NHentai et "female: netorare" pour E-Hentai!</string>
     <string name="action_edit_tags">Éditer tags</string>
     <string name="information_empty_tags">Vous n\'avez aucun tag. Appuyez sur le bouton plus pour en créer un pour trier votre bibliothèque par Tags</string>
@@ -345,7 +321,6 @@
 
     <!-- Library -->
     <!-- Library Sheet -->
-    <string name="tracked">Suivi</string>
     <string name="lewd">Obscène</string>
     <string name="started">Commencé</string>
 
@@ -475,8 +450,6 @@
     <string name="last_update_check">Vérification de la dernière mise à jour</string>
     <string name="path">Path</string>
     <string name="artist">Artiste</string>
-    <string name="reader_id">ID de lecteur</string>
-    <string name="series">Series</string>
     <string name="characters">Personnages</string>
     <string name="group">Groupe</string>
     <string name="media_id">ID média</string>
@@ -495,7 +468,6 @@
     <string name="parodies">Parodies</string>
     <string name="author">Auteur</string>
     <string name="last_chapter_number">Numéro du dernier chapitre</string>
-    <string name="missing_chapters">Chapitres manquants</string>
     <string name="follow_status">Suivre l\'état</string>
     <string name="anilist_id">ID Anilist</string>
     <string name="kitsu_id">ID Kitsu</string>
@@ -508,7 +480,6 @@
         <item quantity="one">%1$d page</item>
         <item quantity="other">%1$d pages</item>
     </plurals>
-    <string name="tags">Tags</string>
     <string name="is_visible">Visible: %1$s</string>
     <string name="language_translated">%1$s TR</string>
 
@@ -544,9 +515,6 @@
     <string name="mangadex_specific_settings">Paramètres de MangaDex</string>
     <string name="mangadex_sync_follows_to_library">Sync Mangadex manga dans Neko</string>
     <string name="mangadex_sync_follows_to_library_summary">Extrait le manga de lecture/relecture de Mangadex dans votre bibliothèque Neko</string>
-    <string name="mangadex_low_quality_covers">Utilisez des miniatures de mauvaise qualité</string>
-    <string name="mangadex_use_latest_cover">Utiliser la dernière couverture téléchargée</string>
-    <string name="mangadex_use_latest_cover_summary">Lorsqu\'il est activé</string>
     <string name="mangadex_preffered_source">Source MangaDex préférée</string>
     <string name="mangadex_preffered_source_summary">Définissez votre source mangadex choisie, cela sera utilisé pour les suivis et un tas d\'autres fonctionnalités autour de l\'application</string>
     <string name="two_factor">Code de double identification </string>
@@ -554,46 +522,14 @@
     <string name="mangadex_add_to_follows">Ajouter au suivie MangaDex</string>
     <string name="mangadex_follows">Suivie MangaDex</string>
     <string name="random">Aléatoire</string>
-    <string name="mangadex_push_favorites_to_mangadex_toast">Poussé %d manga vers MangaDex</string>
 
 
     <!-- Scanlator filters -->
 <!--    <string name="select_scanlators">Scanlator groups to show</string>-->
-    <string name="metadata_corrupted">Métadonnées corrompues, veuillez rafraîchir le manga</string>
-<!--    <string name="no_scanlators">No scanlators available</string>-->
+    <!--    <string name="no_scanlators">No scanlators available</string>-->
 
     <!-- Similar -->
     <string name="similar">Manga similaire %1$s</string>
-    <string name="similar_loading_percent">Mise à jour d\'un manga similaire (%1$d / %2$d mis à jour)</string>
-    <string name="similar_loading_complete">La mise à jour d\'un manga similaire est terminée</string>
-    <string name="similar_loading_complete_error">Erreur en essayant de charger/traiter un manga similaire</string>
-    <string name="similar_loading_progress_start">Téléchargement d\'un fichier de données manga similaire…</string>
-    <string name="similar_ask_to_enable_title">Permettre un manga similaire?</string>
-    <string name="similar_ask_to_enable">
-        Souhaitez-vous permettre des recommandations similaires pour les manga?
-        Si vous l\'activez dès maintenant, vous pourrez télécharger environ 9 Mo de données.
-        Vous pouvez toujours l\'activer dans le menu Paramètres / Mangadex.
-    </string>
-    <string name="similar_ask_to_enable_yes">Activer</string>
-    <string name="similar_ask_to_enable_no">Sauter</string>
-    <string name="similar_settings">Paramètres du manga similaires</string>
-    <string name="similar_screen">Afficher un manga similaire</string>
-    <string name="similar_manually_update">Extraire la dernière base de données</string>
-    <string name="similar_manually_toast">Démarrage de la mise à jour du manuel</string>
-    <string name="similar_manually_update_message">
-        Téléchargez la dernière base de données de manga similaire.
-        Elle fait environ 9MB et est mise à jour quotidiennement.
-    </string>
-    <string name="similar_update_fequency">Fréquence de mise à jour similaire</string>
-    <string name="similar_screen_summary_message">
-        Il s\'agit d\'une fonction où l\'on peut obtenir des recommandations de manga.
-        Il s\'agit d\'un système de recommandation en dehors de MangaDex, qui fonctionne par correspondance entre les genres,
-        la démographie, le type de contenu, les thèmes, puis en utilisant le terme fréquence - fréquence des documents inversés (tf-idf) pour obtenir la
-        similitude des descriptions de deux mangas. Lorsqu\'il est activé, ce fichier sera téléchargé immédiatement ! Le fichier fait environ 9 Mo.
-    </string>
-    <string name="similar_credit_message">
-        Pour plus d\'informations et pour consulter le code source:\n%s
-    </string>
 
     <!-- Humanize time -->
     <plurals name="humanize_year">

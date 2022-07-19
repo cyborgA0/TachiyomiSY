@@ -19,10 +19,10 @@ import eu.kanade.tachiyomi.databinding.PagerControllerBinding
 import eu.kanade.tachiyomi.ui.base.controller.RootController
 import eu.kanade.tachiyomi.ui.base.controller.RxController
 import eu.kanade.tachiyomi.ui.base.controller.TabbedController
-import eu.kanade.tachiyomi.ui.browse.extension.ExtensionController
-import eu.kanade.tachiyomi.ui.browse.latest.LatestController
+import eu.kanade.tachiyomi.ui.browse.extension.ExtensionsController
+import eu.kanade.tachiyomi.ui.browse.feed.FeedController
 import eu.kanade.tachiyomi.ui.browse.migration.sources.MigrationSourcesController
-import eu.kanade.tachiyomi.ui.browse.source.SourceController
+import eu.kanade.tachiyomi.ui.browse.source.SourcesController
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import uy.kohesive.injekt.injectLazy
 
@@ -32,7 +32,7 @@ class BrowseController :
     TabbedController {
 
     constructor(toExtensions: Boolean = false) : super(
-        bundleOf(TO_EXTENSIONS_EXTRA to toExtensions)
+        bundleOf(TO_EXTENSIONS_EXTRA to toExtensions),
     )
 
     @Suppress("unused")
@@ -80,11 +80,12 @@ class BrowseController :
         }
     }
 
-    override fun configureTabs(tabs: TabLayout) {
+    override fun configureTabs(tabs: TabLayout): Boolean {
         with(tabs) {
             tabGravity = TabLayout.GRAVITY_FILL
             tabMode = TabLayout.MODE_FIXED
         }
+        return true
     }
 
     override fun cleanupTabs(tabs: TabLayout) {
@@ -96,7 +97,7 @@ class BrowseController :
         /* It's possible to switch to the Library controller by the time setExtensionUpdateBadge
         is called, resulting in a badge being put on the category tabs (if enabled).
         This check prevents that from happening */
-        if (router.backstack.last().controller !is BrowseController) return
+        if (router.backstack.lastOrNull()?.controller !is BrowseController) return
 
         (activity as? MainActivity)?.binding?.tabs?.apply {
             val updates = preferences.extensionUpdatesCount().get()
@@ -115,20 +116,20 @@ class BrowseController :
 
         // SY -->
         private val tabTitles = (
-            if (preferences.latestTabInFront().get()) {
+            if (preferences.feedTabInFront().get()) {
                 listOf(
-                    R.string.latest,
+                    R.string.feed,
                     R.string.label_sources,
                     R.string.label_extensions,
-                    R.string.label_migration
+                    R.string.label_migration,
 
                 )
             } else {
                 listOf(
                     R.string.label_sources,
-                    R.string.latest,
+                    R.string.feed,
                     R.string.label_extensions,
-                    R.string.label_migration
+                    R.string.label_migration,
                 )
             }
             )
@@ -143,10 +144,10 @@ class BrowseController :
             if (!router.hasRootController()) {
                 val controller: Controller = when (position) {
                     // SY -->
-                    SOURCES_CONTROLLER -> if (preferences.latestTabInFront().get()) LatestController() else SourceController()
-                    LATEST_CONTROLLER -> if (!preferences.latestTabInFront().get()) LatestController() else SourceController()
+                    SOURCES_CONTROLLER -> if (preferences.feedTabInFront().get()) FeedController() else SourcesController()
+                    FEED_CONTROLLER -> if (!preferences.feedTabInFront().get()) FeedController() else SourcesController()
                     // SY <--
-                    EXTENSIONS_CONTROLLER -> ExtensionController()
+                    EXTENSIONS_CONTROLLER -> ExtensionsController()
                     MIGRATION_CONTROLLER -> MigrationSourcesController()
                     else -> error("Wrong position $position")
                 }
@@ -165,7 +166,7 @@ class BrowseController :
         const val SOURCES_CONTROLLER = 0
 
         // SY -->
-        const val LATEST_CONTROLLER = 1
+        const val FEED_CONTROLLER = 1
         const val EXTENSIONS_CONTROLLER = 2
         const val MIGRATION_CONTROLLER = 3
         // SY <--

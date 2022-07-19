@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.source.online.all
 
 import android.content.Context
 import android.net.Uri
+import androidx.compose.runtime.Composable
 import androidx.core.net.toUri
 import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -9,13 +10,13 @@ import eu.kanade.tachiyomi.source.model.toSManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.UrlImportableSource
-import eu.kanade.tachiyomi.ui.manga.MangaController
+import eu.kanade.tachiyomi.ui.manga.MangaScreenState
 import eu.kanade.tachiyomi.util.asJsoup
 import exh.metadata.metadata.PervEdenSearchMetadata
 import exh.metadata.metadata.base.RaisedSearchMetadata
 import exh.metadata.metadata.base.RaisedTag
 import exh.source.DelegatedHttpSource
-import exh.ui.metadata.adapters.PervEdenDescriptionAdapter
+import exh.ui.metadata.adapters.PervEdenDescription
 import exh.util.urlImportFetchSearchManga
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -76,7 +77,7 @@ class PervEden(delegate: HttpSource, val context: Context) :
                                 tags += RaisedTag(
                                     "artist",
                                     it.text().lowercase(),
-                                    RaisedSearchMetadata.TAG_TYPE_VIRTUAL
+                                    RaisedSearchMetadata.TAG_TYPE_VIRTUAL,
                                 )
                             }
                         }
@@ -85,7 +86,7 @@ class PervEden(delegate: HttpSource, val context: Context) :
                                 tags += RaisedTag(
                                     null,
                                     it.text().lowercase(),
-                                    PervEdenSearchMetadata.TAG_TYPE_DEFAULT
+                                    PervEdenSearchMetadata.TAG_TYPE_DEFAULT,
                                 )
                             }
                         }
@@ -133,7 +134,8 @@ class PervEden(delegate: HttpSource, val context: Context) :
         return newUri.toString()
     }
 
-    override fun getDescriptionAdapter(controller: MangaController): PervEdenDescriptionAdapter {
-        return PervEdenDescriptionAdapter(controller)
+    @Composable
+    override fun DescriptionComposable(state: MangaScreenState.Success, openMetadataViewer: () -> Unit, search: (String) -> Unit) {
+        PervEdenDescription(state, openMetadataViewer)
     }
 }

@@ -4,27 +4,32 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.network.parseAs
+import exh.md.dto.AggregateDto
 import exh.md.dto.AtHomeDto
 import exh.md.dto.AtHomeImageReportDto
 import exh.md.dto.ChapterDto
 import exh.md.dto.ChapterListDto
 import exh.md.dto.MangaDto
 import exh.md.dto.MangaListDto
+import exh.md.dto.RelationListDto
 import exh.md.dto.ResultDto
+import exh.md.dto.StatisticsDto
 import exh.md.utils.MdApi
 import exh.md.utils.MdConstants
 import exh.md.utils.MdUtil
+import exh.util.dropEmpty
+import exh.util.trimAll
 import okhttp3.CacheControl
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 
 class MangaDexService(
-    private val client: OkHttpClient
+    private val client: OkHttpClient,
 ) {
 
     suspend fun viewMangas(
-        ids: List<String>
+        ids: List<String>,
     ): MangaListDto {
         return client.newCall(
             GET(
@@ -39,13 +44,13 @@ class MangaDexService(
                     }
                     .build()
                     .toString(),
-                cache = CacheControl.FORCE_NETWORK
-            )
+                cache = CacheControl.FORCE_NETWORK,
+            ),
         ).await().parseAs(MdUtil.jsonParser)
     }
 
     suspend fun viewManga(
-        id: String
+        id: String,
     ): MangaDto {
         return client.newCall(
             GET(
@@ -59,15 +64,58 @@ class MangaDexService(
                     }
                     .build()
                     .toString(),
-                cache = CacheControl.FORCE_NETWORK
-            )
+                cache = CacheControl.FORCE_NETWORK,
+            ),
         ).await().parseAs(MdUtil.jsonParser)
     }
+
+    suspend fun mangasRating(
+        vararg ids: String,
+    ): StatisticsDto {
+        return client.newCall(
+            GET(
+                MdApi.statistics.toHttpUrl()
+                    .newBuilder()
+                    .apply {
+                        ids.forEach { id ->
+                            addQueryParameter("manga[]", id)
+                        }
+                    }
+                    .build()
+                    .toString(),
+                cache = CacheControl.FORCE_NETWORK,
+            ),
+        ).await().parseAs(MdUtil.jsonParser)
+    }
+
+    suspend fun aggregateChapters(
+        id: String,
+        translatedLanguage: String,
+    ): AggregateDto {
+        return client.newCall(
+            GET(
+                MdApi.manga.toHttpUrl()
+                    .newBuilder()
+                    .apply {
+                        addPathSegment(id)
+                        addPathSegment("aggregate")
+                        addQueryParameter("translatedLanguage[]", translatedLanguage)
+                    }
+                    .build()
+                    .toString(),
+                cache = CacheControl.FORCE_NETWORK,
+            ),
+        ).await().parseAs(MdUtil.jsonParser)
+    }
+
+    private fun String.splitString() = replace("\n", "").split(',').trimAll().dropEmpty()
 
     suspend fun viewChapters(
         id: String,
         translatedLanguage: String,
         offset: Int,
+        blockedGroups: String,
+        blockedUploaders: String,
     ): ChapterListDto {
         val url = MdApi.manga.toHttpUrl()
             .newBuilder()
@@ -84,6 +132,12 @@ class MangaDexService(
                 addQueryParameter("contentRating[]", "pornographic")
                 addQueryParameter("translatedLanguage[]", translatedLanguage)
                 addQueryParameter("offset", offset.toString())
+                blockedGroups.splitString().forEach {
+                    addQueryParameter("excludedGroups[]", it)
+                }
+                blockedUploaders.splitString().forEach {
+                    addQueryParameter("excludedUploaders[]", it)
+                }
             }
             .build()
             .toString()
@@ -91,8 +145,8 @@ class MangaDexService(
         return client.newCall(
             GET(
                 url,
-                cache = CacheControl.FORCE_NETWORK
-            )
+                cache = CacheControl.FORCE_NETWORK,
+            ),
         ).await().parseAs(MdUtil.jsonParser)
     }
 
@@ -113,17 +167,32 @@ class MangaDexService(
             POST(
                 MdConstants.atHomeReportUrl,
                 body = MdUtil.encodeToBody(atHomeImageReportDto),
-                cache = CacheControl.FORCE_NETWORK
-            )
+                cache = CacheControl.FORCE_NETWORK,
+            ),
         ).await().parseAs(MdUtil.jsonParser)
     }
 
     suspend fun getAtHomeServer(
         atHomeRequestUrl: String,
-        headers: Headers
+        headers: Headers,
     ): AtHomeDto {
         return client.newCall(GET(atHomeRequestUrl, headers, CacheControl.FORCE_NETWORK))
             .await()
-            .parseAs()
+            .parseAs(MdUtil.jsonParser)
+    }
+
+    suspend fun relatedManga(id: String): RelationListDto {
+        return client.newCall(
+            GET(
+                MdApi.manga.toHttpUrl().newBuilder()
+                    .apply {
+                        addPathSegment(id)
+                        addPathSegment("relation")
+                    }
+                    .build()
+                    .toString(),
+                cache = CacheControl.FORCE_NETWORK,
+            ),
+        ).await().parseAs(MdUtil.jsonParser)
     }
 }

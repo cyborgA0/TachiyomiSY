@@ -8,9 +8,11 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.all.MangaDex
 import exh.log.xLogD
 import exh.md.dto.LoginBodyTokenDto
+import exh.md.dto.MangaAttributesDto
 import exh.md.dto.MangaDataDto
 import exh.md.network.NoSessionException
 import exh.source.getMainSource
+import exh.util.dropBlank
 import exh.util.floor
 import exh.util.nullIfBlank
 import exh.util.nullIfZero
@@ -77,11 +79,11 @@ class MdUtil {
             "English :",
             "[English]:",
             "English Translaton:",
-            "[B][ENG][/B]"
+            "[B][ENG][/B]",
         )
 
         val bbCodeToRemove = listOf(
-            "list", "*", "hr", "u", "b", "i", "s", "center", "spoiler="
+            "list", "*", "hr", "u", "b", "i", "s", "center", "spoiler=",
         )
         val descriptionLanguages = listOf(
             "=FRANCAIS=",
@@ -224,7 +226,7 @@ class MdUtil {
         }
 
         fun getScanlators(scanlators: String?): Set<String> {
-            return scanlators?.split(scanlatorSeparator)?.toSet().orEmpty()
+            return scanlators?.split(scanlatorSeparator)?.dropBlank()?.toSet().orEmpty()
         }
 
         fun getScanlatorString(scanlators: Set<String>): String {
@@ -265,19 +267,41 @@ class MdUtil {
         fun createMangaEntry(json: MangaDataDto, lang: String): MangaInfo {
             return MangaInfo(
                 key = buildMangaUrl(json.id),
-                title = cleanString(getTitle(json.attributes.title.asMdMap(), lang, json.attributes.originalLanguage)),
+                title = cleanString(getTitleFromManga(json.attributes, lang)),
                 cover = json.relationships
                     .firstOrNull { relationshipDto -> relationshipDto.type == MdConstants.Types.coverArt }
                     ?.attributes
                     ?.fileName
                     ?.let { coverFileName ->
                         cdnCoverUrl(json.id, coverFileName)
-                    }.orEmpty()
+                    }.orEmpty(),
             )
         }
 
-        fun getTitle(titleMap: Map<String, String?>, currentLang: String, originalLanguage: String): String {
-            return titleMap[currentLang] ?: titleMap["en"] ?: titleMap[originalLanguage].orEmpty()
+        fun getTitleFromManga(json: MangaAttributesDto, lang: String): String {
+            return getFromLangMap(json.title.asMdMap(), lang, json.originalLanguage)
+                ?: getAltTitle(json.altTitles, lang, json.originalLanguage)
+                ?: json.title.asMdMap<String>()[json.originalLanguage]
+                ?: json.altTitles.firstNotNullOfOrNull { it[json.originalLanguage] }
+                    .orEmpty()
+        }
+
+        fun getFromLangMap(langMap: Map<String, String>, currentLang: String, originalLanguage: String): String? {
+            return langMap[currentLang]
+                ?: langMap["en"]
+                ?: if (originalLanguage == "ja") {
+                    langMap["ja-ro"]
+                        ?: langMap["jp-ro"]
+                } else null
+        }
+
+        fun getAltTitle(langMaps: List<Map<String, String>>, currentLang: String, originalLanguage: String): String? {
+            return langMaps.firstNotNullOfOrNull { it[currentLang] }
+                ?: langMaps.firstNotNullOfOrNull { it["en"] }
+                ?: if (originalLanguage == "ja") {
+                    langMaps.firstNotNullOfOrNull { it["ja-ro"] }
+                        ?: langMaps.firstNotNullOfOrNull { it["jp-ro"] }
+                } else null
         }
 
         fun cdnCoverUrl(dexId: String, fileName: String): String {
@@ -300,16 +324,14 @@ class MdUtil {
 
         fun refreshToken(preferences: PreferencesHelper, mdList: MdList) = getLoginBody(preferences, mdList)?.refresh
 
-        fun updateLoginToken(token: LoginBodyTokenDto?, preferences: PreferencesHelper, mdList: MdList) {
-            if (token != null) {
-                preferences.trackToken(mdList).set(jsonParser.encodeToString(token))
-            } else preferences.trackToken(mdList).delete()
+        fun updateLoginToken(token: LoginBodyTokenDto, preferences: PreferencesHelper, mdList: MdList) {
+            preferences.trackToken(mdList).set(jsonParser.encodeToString(token))
         }
 
         fun getAuthHeaders(headers: Headers, preferences: PreferencesHelper, mdList: MdList) =
             headers.newBuilder().add(
                 "Authorization",
-                "Bearer " + (sessionToken(preferences, mdList) ?: throw NoSessionException())
+                "Bearer " + (sessionToken(preferences, mdList) ?: throw NoSessionException()),
             ).build()
 
         fun getEnabledMangaDex(preferences: PreferencesHelper, sourceManager: SourceManager = Injekt.get()): MangaDex? {

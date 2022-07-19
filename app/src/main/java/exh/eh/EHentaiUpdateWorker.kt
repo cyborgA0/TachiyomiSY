@@ -11,29 +11,28 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.elvishew.xlog.Logger
 import com.elvishew.xlog.XLog
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
-import eu.kanade.tachiyomi.data.database.models.Chapter
-import eu.kanade.tachiyomi.data.database.models.Manga
-import eu.kanade.tachiyomi.data.database.models.toMangaInfo
+import eu.kanade.domain.chapter.interactor.GetChapterByMangaId
+import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
+import eu.kanade.domain.chapter.model.Chapter
+import eu.kanade.domain.manga.interactor.GetExhFavoriteMangaWithMetadata
+import eu.kanade.domain.manga.interactor.GetFlatMetadataById
+import eu.kanade.domain.manga.interactor.InsertFlatMetadata
+import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.domain.manga.model.Manga
+import eu.kanade.domain.manga.model.toMangaInfo
 import eu.kanade.tachiyomi.data.library.LibraryUpdateNotifier
-import eu.kanade.tachiyomi.data.preference.CHARGING
+import eu.kanade.tachiyomi.data.preference.DEVICE_CHARGING
+import eu.kanade.tachiyomi.data.preference.DEVICE_ONLY_ON_WIFI
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
-import eu.kanade.tachiyomi.data.preference.UNMETERED_NETWORK
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.source.model.toSChapter
-import eu.kanade.tachiyomi.source.model.toSManga
 import eu.kanade.tachiyomi.source.online.all.EHentai
-import eu.kanade.tachiyomi.util.chapter.syncChaptersWithSource
+import eu.kanade.tachiyomi.util.system.isConnectedToWifi
 import exh.debug.DebugToggles
 import exh.eh.EHentaiUpdateWorkerConstants.UPDATES_PER_ITERATION
 import exh.log.xLog
 import exh.metadata.metadata.EHentaiSearchMetadata
-import exh.metadata.metadata.base.getFlatMetadataForManga
-import exh.metadata.metadata.base.insertFlatMetadataAsync
-import exh.source.isEhBasedManga
 import exh.util.cancellable
-import exh.util.days
-import exh.util.executeOnIO
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.single
@@ -44,22 +43,33 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.days
 
 class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
-    private val db: DatabaseHelper by injectLazy()
     private val prefs: PreferencesHelper by injectLazy()
     private val sourceManager: SourceManager by injectLazy()
     private val updateHelper: EHentaiUpdateHelper by injectLazy()
     private val logger: Logger = xLog()
+    private val updateManga: UpdateManga by injectLazy()
+    private val syncChaptersWithSource: SyncChaptersWithSource by injectLazy()
+    private val getChapterByMangaId: GetChapterByMangaId by injectLazy()
+    private val getFlatMetadataById: GetFlatMetadataById by injectLazy()
+    private val insertFlatMetadata: InsertFlatMetadata by injectLazy()
+    private val getExhFavoriteMangaWithMetadata: GetExhFavoriteMangaWithMetadata by injectLazy()
 
     private val updateNotifier by lazy { LibraryUpdateNotifier(context) }
 
     override suspend fun doWork(): Result {
         return try {
-            startUpdating()
-            logger.d("Update job completed!")
-            Result.success()
+            val preferences = Injekt.get<PreferencesHelper>()
+            if (requiresWifiConnection(preferences) && !context.isConnectedToWifi()) {
+                Result.failure()
+            } else {
+                startUpdating()
+                logger.d("Update job completed!")
+                Result.success()
+            }
         } catch (e: Exception) {
             Result.failure()
         }
@@ -70,16 +80,12 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
         val startTime = System.currentTimeMillis()
 
         logger.d("Finding manga with metadata...")
-        val metadataManga = db.getFavoriteMangaWithMetadata().executeOnIO()
+        val metadataManga = getExhFavoriteMangaWithMetadata.await()
 
         logger.d("Filtering manga and raising metadata...")
         val curTime = System.currentTimeMillis()
         val allMeta = metadataManga.asFlow().cancellable().mapNotNull { manga ->
-            if (!manga.isEhBasedManga()) {
-                return@mapNotNull null
-            }
-
-            val meta = db.getFlatMetadataForManga(manga.id!!).executeOnIO()
+            val meta = getFlatMetadataById.await(manga.id)
                 ?: return@mapNotNull null
 
             val raisedMeta = meta.raise<EHentaiSearchMetadata>()
@@ -89,8 +95,8 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
                 return@mapNotNull null
             }
 
-            val chapter = db.getChapters(manga.id!!).executeOnIO().minByOrNull {
-                it.date_upload
+            val chapter = getChapterByMangaId.await(manga.id).minByOrNull {
+                it.dateUpload
             }
 
             UpdateEntry(manga, raisedMeta, chapter)
@@ -119,7 +125,7 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
                     meta.gId,
                     meta.gToken,
                     failuresThisIteration,
-                    modifiedThisIteration.size
+                    modifiedThisIteration.size,
                 )
 
                 if (manga.id in modifiedThisIteration) {
@@ -141,7 +147,7 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
                             manga.id,
                             meta.gId,
                             meta.gToken,
-                            failuresThisIteration
+                            failuresThisIteration,
                         )
                     }
 
@@ -154,7 +160,7 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
                         manga.id,
                         meta.gId,
                         meta.gToken,
-                        failuresThisIteration
+                        failuresThisIteration,
                     )
 
                     continue
@@ -170,8 +176,8 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
                     updatedManga += acceptedRoot.manga to new.toTypedArray()
                 }
 
-                modifiedThisIteration += acceptedRoot.manga.id!!
-                modifiedThisIteration += discardedRoots.map { it.manga.id!! }
+                modifiedThisIteration += acceptedRoot.manga.id
+                modifiedThisIteration += discardedRoots.map { it.manga.id }
                 updatedThisIteration++
             }
         } finally {
@@ -180,9 +186,9 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
                     EHentaiUpdaterStats(
                         startTime,
                         allMeta.size,
-                        updatedThisIteration
-                    )
-                )
+                        updatedThisIteration,
+                    ),
+                ),
             )
 
             if (updatedManga.isNotEmpty()) {
@@ -198,22 +204,21 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
 
         try {
             val updatedManga = source.getMangaDetails(manga.toMangaInfo())
-            manga.copyFrom(updatedManga.toSManga())
-            db.insertManga(manga).executeOnIO()
+            updateManga.awaitUpdateFromSource(manga, updatedManga, false)
 
             val newChapters = source.getChapterList(manga.toMangaInfo())
                 .map { it.toSChapter() }
 
-            val (new, _) = syncChaptersWithSource(db, newChapters, manga, source) // Not suspending, but does block, maybe fix this?
-            return new to db.getChapters(manga).executeOnIO()
+            val (new, _) = syncChaptersWithSource.await(newChapters, manga, source)
+            return new to getChapterByMangaId.await(manga.id)
         } catch (t: Throwable) {
             if (t is EHentai.GalleryNotFoundException) {
-                val meta = db.getFlatMetadataForManga(manga.id!!).executeOnIO()?.raise<EHentaiSearchMetadata>()
+                val meta = getFlatMetadataById.await(manga.id)?.raise<EHentaiSearchMetadata>()
                 if (meta != null) {
                     // Age dead galleries
                     logger.d("Aged %s - notfound", manga.id)
                     meta.aged = true
-                    db.insertFlatMetadataAsync(meta.flatten()).await()
+                    insertFlatMetadata.await(meta)
                 }
                 throw GalleryNotUpdatedException(false, t)
             }
@@ -239,15 +244,10 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
             val interval = prefInterval ?: preferences.exhAutoUpdateFrequency().get()
             if (interval > 0) {
                 val restrictions = preferences.exhAutoUpdateRequirements().get()
-                val acRestriction = CHARGING in restrictions
-                val wifiRestriction = if (UNMETERED_NETWORK in restrictions) {
-                    NetworkType.UNMETERED
-                } else {
-                    NetworkType.CONNECTED
-                }
+                val acRestriction = DEVICE_CHARGING in restrictions
 
                 val constraints = Constraints.Builder()
-                    .setRequiredNetworkType(wifiRestriction)
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
                     .setRequiresCharging(acRestriction)
                     .build()
 
@@ -255,7 +255,7 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
                     interval.toLong(),
                     TimeUnit.HOURS,
                     10,
-                    TimeUnit.MINUTES
+                    TimeUnit.MINUTES,
                 )
                     .addTag(TAG)
                     .setConstraints(constraints)
@@ -271,6 +271,11 @@ class EHentaiUpdateWorker(private val context: Context, workerParams: WorkerPara
         fun cancelBackground(context: Context) {
             WorkManager.getInstance(context).cancelAllWorkByTag(TAG)
         }
+    }
+
+    fun requiresWifiConnection(preferences: PreferencesHelper): Boolean {
+        val restrictions = preferences.exhAutoUpdateRequirements().get()
+        return DEVICE_ONLY_ON_WIFI in restrictions
     }
 }
 

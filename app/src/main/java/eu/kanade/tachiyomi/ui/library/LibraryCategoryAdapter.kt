@@ -1,17 +1,18 @@
 package eu.kanade.tachiyomi.ui.library
 
 import eu.davidea.flexibleadapter.FlexibleAdapter
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
+import eu.kanade.domain.manga.interactor.GetIdsOfFavoriteMangaWithMetadata
+import eu.kanade.domain.manga.interactor.GetSearchTags
+import eu.kanade.domain.manga.interactor.GetSearchTitles
+import eu.kanade.domain.manga.model.Manga
+import eu.kanade.domain.track.interactor.GetTracks
 import eu.kanade.tachiyomi.data.database.models.LibraryManga
-import eu.kanade.tachiyomi.data.database.models.Manga
-import eu.kanade.tachiyomi.data.database.models.Track
-import eu.kanade.tachiyomi.data.database.tables.MangaTable
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.data.track.TrackManager
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.source.model.Filter
-import eu.kanade.tachiyomi.ui.category.CategoryAdapter
 import eu.kanade.tachiyomi.util.lang.withUIContext
+import exh.log.xLogW
 import exh.metadata.sql.models.SearchTag
 import exh.metadata.sql.models.SearchTitle
 import exh.search.Namespace
@@ -20,7 +21,6 @@ import exh.search.SearchEngine
 import exh.search.Text
 import exh.source.isMetadataSource
 import exh.util.cancellable
-import exh.util.executeOnIO
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
-import timber.log.Timber
 import uy.kohesive.injekt.injectLazy
 
 /**
@@ -41,7 +40,6 @@ import uy.kohesive.injekt.injectLazy
 class LibraryCategoryAdapter(view: LibraryCategoryView, val controller: LibraryController) :
     FlexibleAdapter<LibraryItem>(null, view, true) {
     // EXH -->
-    private val db: DatabaseHelper by injectLazy()
     private val searchEngine = SearchEngine()
     private var lastFilterJob: Job? = null
     private val sourceManager: SourceManager by injectLazy()
@@ -50,7 +48,13 @@ class LibraryCategoryAdapter(view: LibraryCategoryView, val controller: LibraryC
     private val hasLoggedServices by lazy {
         trackManager.hasLoggedServices()
     }
-    private val services = trackManager.services.map { service -> service.id to controller.activity!!.getString(service.nameRes()) }.toMap()
+    private val services = trackManager.services.associate { service ->
+        service.id to controller.activity!!.getString(service.nameRes())
+    }
+    private val getIdsOfFavoriteMangaWithMetadata: GetIdsOfFavoriteMangaWithMetadata by injectLazy()
+    private val getTracks: GetTracks by injectLazy()
+    private val getSearchTags: GetSearchTags by injectLazy()
+    private val getSearchTitles: GetSearchTitles by injectLazy()
 
     // Keep compatibility as searchText field was replaced when we upgraded FlexibleAdapter
     var searchText
@@ -64,10 +68,6 @@ class LibraryCategoryAdapter(view: LibraryCategoryView, val controller: LibraryC
      * The list of manga in this category.
      */
     private var mangas: List<LibraryItem> = emptyList()
-
-    // SY -->
-    val onItemReleaseListener: CategoryAdapter.OnItemReleaseListener = view
-    // SY <--
 
     /**
      * Sets a list of manga in the adapter.
@@ -115,19 +115,7 @@ class LibraryCategoryAdapter(view: LibraryCategoryView, val controller: LibraryC
                 val newManga = try {
                     // Prepare filter object
                     val parsedQuery = searchEngine.parseQuery(savedSearchText)
-
-                    val mangaWithMetaIdsQuery = db.getIdsOfFavoriteMangaWithMetadata().executeOnIO()
-                    val mangaWithMetaIds = LongArray(mangaWithMetaIdsQuery.count)
-                    if (mangaWithMetaIds.isNotEmpty()) {
-                        val mangaIdCol = mangaWithMetaIdsQuery.getColumnIndex(MangaTable.COL_ID)
-                        mangaWithMetaIdsQuery.moveToFirst()
-                        while (!mangaWithMetaIdsQuery.isAfterLast) {
-                            ensureActive() // Fail early when cancelled
-
-                            mangaWithMetaIds[mangaWithMetaIdsQuery.position] = mangaWithMetaIdsQuery.getLong(mangaIdCol)
-                            mangaWithMetaIdsQuery.moveToNext()
-                        }
-                    }
+                    val mangaWithMetaIds = getIdsOfFavoriteMangaWithMetadata.await()
 
                     ensureActive() // Fail early when cancelled
 
@@ -139,8 +127,8 @@ class LibraryCategoryAdapter(view: LibraryCategoryView, val controller: LibraryC
                                 // No meta? Filter using title
                                 filterManga(parsedQuery, item.manga)
                             } else {
-                                val tags = db.getSearchTagsForManga(mangaId).executeAsBlocking()
-                                val titles = db.getSearchTitlesForManga(mangaId).executeAsBlocking()
+                                val tags = getSearchTags.await(mangaId)
+                                val titles = getSearchTitles.await(mangaId)
                                 filterManga(parsedQuery, item.manga, false, tags, titles)
                             }
                         } else {
@@ -151,7 +139,7 @@ class LibraryCategoryAdapter(view: LibraryCategoryView, val controller: LibraryC
                     // Do not catch cancellations
                     if (e is CancellationException) throw e
 
-                    Timber.w(e, "Could not filter mangas!")
+                    this@LibraryCategoryAdapter.xLogW("Could not filter mangas!", e)
                     mangas
                 }
 
@@ -166,9 +154,15 @@ class LibraryCategoryAdapter(view: LibraryCategoryView, val controller: LibraryC
         }
     }
 
-    private suspend fun filterManga(queries: List<QueryComponent>, manga: LibraryManga, checkGenre: Boolean = true, searchTags: List<SearchTag>? = null, searchTitles: List<SearchTitle>? = null): Boolean {
+    private suspend fun filterManga(
+        queries: List<QueryComponent>,
+        manga: LibraryManga,
+        checkGenre: Boolean = true,
+        searchTags: List<SearchTag>? = null,
+        searchTitles: List<SearchTitle>? = null,
+    ): Boolean {
         val mappedQueries = queries.groupBy { it.excluded }
-        val tracks = if (hasLoggedServices) db.getTracks(manga).executeAsBlocking().toList() else null
+        val tracks = if (hasLoggedServices) getTracks.await(manga.id!!).toList() else null
         val source = sourceManager.get(manga.source)
         val genre = if (checkGenre) manga.getGenres().orEmpty() else emptyList()
         val hasNormalQuery = mappedQueries[false]?.all { queryComponent ->
@@ -232,12 +226,12 @@ class LibraryCategoryAdapter(view: LibraryCategoryView, val controller: LibraryC
             (hasNormalQuery == null && doesNotHaveExcludedQuery != null && doesNotHaveExcludedQuery)
     }
 
-    private fun filterTracks(constraint: String, tracks: List<Track>): Boolean {
+    private fun filterTracks(constraint: String, tracks: List<eu.kanade.domain.track.model.Track>): Boolean {
         return tracks.any {
-            val trackService = trackManager.getService(it.sync_id)
+            val trackService = trackManager.getService(it.syncId)
             if (trackService != null) {
-                val status = trackService.getStatus(it.status)
-                val name = services[it.sync_id]
+                val status = trackService.getStatus(it.status.toInt())
+                val name = services[it.syncId]
                 return@any status.contains(constraint, true) || name?.contains(constraint, true) == true
             }
             return@any false

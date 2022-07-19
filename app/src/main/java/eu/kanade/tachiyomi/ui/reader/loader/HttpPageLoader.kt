@@ -1,20 +1,24 @@
 package eu.kanade.tachiyomi.ui.reader.loader
 
 import eu.kanade.tachiyomi.data.cache.ChapterCache
+import eu.kanade.tachiyomi.data.database.models.toDomainChapter
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.util.lang.plusAssign
+import eu.kanade.tachiyomi.util.system.logcat
 import exh.source.isEhBasedSource
+import exh.util.DataSaver
+import exh.util.DataSaver.Companion.fetchImage
+import logcat.LogPriority
 import rx.Completable
 import rx.Observable
 import rx.schedulers.Schedulers
 import rx.subjects.PublishSubject
 import rx.subjects.SerializedSubject
 import rx.subscriptions.CompositeSubscription
-import timber.log.Timber
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.PriorityBlockingQueue
@@ -29,7 +33,7 @@ class HttpPageLoader(
     private val source: HttpSource,
     private val chapterCache: ChapterCache = Injekt.get(),
     // SY -->
-    private val preferences: PreferencesHelper = Injekt.get()
+    private val preferences: PreferencesHelper = Injekt.get(),
 // SY <--
 ) : PageLoader() {
 
@@ -43,7 +47,11 @@ class HttpPageLoader(
      */
     private val subscriptions = CompositeSubscription()
 
-    private val preloadSize = /* SY --> */ preferences.preloadSize().get() /* SY <-- */
+    private val preloadSize = /* SY --> */ preferences.preloadSize().get() // SY <--
+
+    // SY -->
+    private val dataSaver = DataSaver(source, preferences)
+    // SY <--
 
     init {
         // EXH -->
@@ -59,9 +67,9 @@ class HttpPageLoader(
                     },
                     { error ->
                         if (error !is InterruptedException) {
-                            Timber.e(error)
+                            logcat(LogPriority.ERROR, error)
                         }
-                    }
+                    },
                 )
             // EXH -->
         }
@@ -83,7 +91,7 @@ class HttpPageLoader(
                 .fromAction {
                     // Convert to pages without reader information
                     val pagesToSave = pages.map { Page(it.index, it.url, it.imageUrl) }
-                    chapterCache.putPageListToCache(chapter.chapter, pagesToSave)
+                    chapterCache.putPageListToCache(chapter.chapter.toDomainChapter()!!, pagesToSave)
                 }
                 .onErrorComplete()
                 .subscribeOn(Schedulers.io())
@@ -96,7 +104,7 @@ class HttpPageLoader(
      * the local cache, otherwise fallbacks to network.
      */
     override fun getPages(): Observable<List<ReaderPage>> {
-        return Observable.fromCallable { chapterCache.getPageListFromCache(chapter.chapter) }
+        return Observable.fromCallable { chapterCache.getPageListFromCache(chapter.chapter.toDomainChapter()!!) }
             .onErrorResumeNext { source.fetchPageList(chapter.chapter) }
             .map { pages ->
                 // SY -->
@@ -105,11 +113,11 @@ class HttpPageLoader(
                     ReaderPage(index, page.url, page.imageUrl)
                 }
                 if (preferences.aggressivePageLoading().get()) {
-                    rp.mapNotNull {
+                    rp.forEach {
                         if (it.status == Page.QUEUE) {
-                            PriorityPage(it, 0)
-                        } else null
-                    }.forEach { queue.offer(it) }
+                            queue.offer(PriorityPage(it, 0))
+                        }
+                    }
                 }
                 rp
                 // SY <--
@@ -201,7 +209,7 @@ class HttpPageLoader(
      */
     private class PriorityPage(
         val page: ReaderPage,
-        val priority: Int
+        val priority: Int,
     ) : Comparable<PriorityPage> {
         companion object {
             private val idGenerator = AtomicInteger()
@@ -269,8 +277,10 @@ class HttpPageLoader(
      */
     private fun HttpSource.cacheImage(page: ReaderPage): Observable<ReaderPage> {
         page.status = Page.DOWNLOAD_IMAGE
-        return fetchImage(page)
-            .doOnNext { chapterCache.putImageToCache(page.imageUrl!!, it) }
+        return fetchImage(page, dataSaver)
+            .doOnNext {
+                chapterCache.putImageToCache(page.imageUrl!!, it)
+            }
             .map { page }
     }
 
@@ -285,9 +295,9 @@ class HttpPageLoader(
                     },
                     { error ->
                         if (error !is InterruptedException) {
-                            Timber.e(error)
+                            logcat(LogPriority.ERROR, error)
                         }
-                    }
+                    },
                 )
         }
     }

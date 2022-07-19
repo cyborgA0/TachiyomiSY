@@ -8,9 +8,11 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.viewer.hasMissingChapters
+import eu.kanade.tachiyomi.util.lang.launchUI
 import eu.kanade.tachiyomi.util.system.createReaderThemeContext
+import eu.kanade.tachiyomi.util.system.logcat
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
-import timber.log.Timber
+import kotlinx.coroutines.delay
 import kotlin.math.max
 
 /**
@@ -174,7 +176,7 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
             if (position != -1) {
                 return position
             } else {
-                Timber.d("Position for ${view.item} not found")
+                logcat { "Position for ${view.item} not found" }
             }
         }
         return POSITION_NONE
@@ -193,7 +195,7 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
 
         val placeAtIndex = when (viewer) {
             is L2RPagerViewer,
-            is VerticalPagerViewer -> currentIndex + 1
+            is VerticalPagerViewer, -> currentIndex + 1
             else -> currentIndex
         }
 
@@ -276,7 +278,7 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
                                 if (index > -1) (
                                     items.take(index).indexOfLast { it?.fullPage == true }
                                     ) else -1
-                                )
+                                ),
                         )
                         // Add a shifted page to the first place there isnt a full page
                         (fullPageBeforeIndex until items.size).forEach {
@@ -315,7 +317,7 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
                 // Step 5: chunk em
                 if (items.isNotEmpty()) {
                     subJoinedItems.addAll(
-                        items.chunked(2).map { Pair(it.first()!!, it.getOrNull(1)) }
+                        items.chunked(2).map { Pair(it.first()!!, it.getOrNull(1)) },
                     )
                 }
                 otherItems.getOrNull(pagedIndex)?.let {
@@ -357,6 +359,26 @@ class PagerViewerAdapter(private val viewer: PagerViewer) : ViewPagerAdapter() {
             index = joinedItems.indexOfFirst { it.first == newerPage || it.second == newerPage }
         }
         viewer.pager.setCurrentItem(index, false)
+    }
+
+    fun splitDoublePages(current: ReaderPage) {
+        val oldCurrent = joinedItems.getOrNull(viewer.pager.currentItem)
+        setJoinedItems(
+            oldCurrent?.second == current ||
+                (current.index + 1) < (
+                (
+                    oldCurrent?.second
+                        ?: oldCurrent?.first
+                    ) as? ReaderPage
+                )?.index ?: 0,
+        )
+
+        // The listener may be removed when we split a page, so the ui may not have updated properly
+        // This case usually happens when we load a new chapter and the first 2 pages need to split og
+        viewer.scope.launchUI {
+            delay(100)
+            viewer.onPageChange(viewer.pager.currentItem)
+        }
     }
     // SY <--
 }

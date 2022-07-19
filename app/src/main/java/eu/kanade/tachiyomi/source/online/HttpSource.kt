@@ -59,13 +59,6 @@ abstract class HttpSource : CatalogueSource {
     }
     // SY <--
 
-//    /**
-//     * Preferences that a source may need.
-//     */
-//    val preferences: SharedPreferences by lazy {
-//        Injekt.get<Application>().getSharedPreferences(source.getPreferenceKey(), Context.MODE_PRIVATE)
-//    }
-
     /**
      * Base url of the website without the trailing slash, like: http://mysite.com
      */
@@ -91,7 +84,8 @@ abstract class HttpSource : CatalogueSource {
     /**
      * Headers used for requests.
      */
-    /* SY --> */ open /* SY <-- */ val headers: Headers by lazy { headersBuilder().build() }
+    /* SY --> */
+    open /* SY <-- */ val headers: Headers by lazy { headersBuilder().build() }
 
     /**
      * Default network client for doing requests.
@@ -150,8 +144,15 @@ abstract class HttpSource : CatalogueSource {
      * @param filters the list of filters to apply.
      */
     override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
-        return client.newCall(searchMangaRequest(page, query, filters))
-            .asObservableSuccess()
+        return Observable.defer {
+            try {
+                client.newCall(searchMangaRequest(page, query, filters)).asObservableSuccess()
+            } catch (e: NoClassDefFoundError) {
+                // RxJava doesn't handle Errors, which tends to happen during global searches
+                // if an old extension using non-existent classes is still around
+                throw RuntimeException(e)
+            }
+        }
             .map { response ->
                 searchMangaParse(response)
             }
@@ -191,14 +192,16 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param page the page number to retrieve.
      */
-    protected abstract fun latestUpdatesRequest(page: Int): Request
+    /* SY --> protected <-- SY */
+    abstract fun latestUpdatesRequest(page: Int): Request
 
     /**
      * Parses the response from the site and returns a [MangasPage] object.
      *
      * @param response the response from the site.
      */
-    protected abstract fun latestUpdatesParse(response: Response): MangasPage
+    /* SY --> protected <-- SY */
+    abstract fun latestUpdatesParse(response: Response): MangasPage
 
     /**
      * Returns an observable with the updated details for a manga. Normally it's not needed to
@@ -330,7 +333,8 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param page the page whose source image has to be downloaded.
      */
-    /* SY --> */ open /* SY <-- */ fun fetchImage(page: Page): Observable<Response> {
+    /* SY --> */
+    open /* SY <-- */ fun fetchImage(page: Page): Observable<Response> {
         return client.newCallWithProgress(imageRequest(page), page)
             .asObservableSuccess()
     }
@@ -393,8 +397,7 @@ abstract class HttpSource : CatalogueSource {
      * @param chapter the chapter to be added.
      * @param manga the manga of the chapter.
      */
-    open fun prepareNewChapter(chapter: SChapter, manga: SManga) {
-    }
+    open fun prepareNewChapter(chapter: SChapter, manga: SManga) {}
 
     /**
      * Returns the list of filters for the source.
@@ -415,6 +418,6 @@ abstract class HttpSource : CatalogueSource {
     // EXH <--
 
     companion object {
-        const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36 Edg/88.0.705.63"
+        const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.124 Safari/537.36 Edg/102.0.1245.44"
     }
 }

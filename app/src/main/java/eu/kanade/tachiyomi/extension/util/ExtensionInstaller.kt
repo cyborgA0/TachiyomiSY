@@ -17,9 +17,10 @@ import eu.kanade.tachiyomi.extension.installer.Installer
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.util.storage.getUriCompat
+import eu.kanade.tachiyomi.util.system.logcat
+import logcat.LogPriority
 import rx.Observable
 import rx.android.schedulers.AndroidSchedulers
-import timber.log.Timber
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -109,7 +110,7 @@ internal class ExtensionInstaller(private val context: Context) {
             .map {
                 downloadManager.query(query).use { cursor ->
                     cursor.moveToFirst()
-                    cursor.getInt(cursor.getColumnIndex(DownloadManager.COLUMN_STATUS))
+                    cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
                 }
             }
             // Ignore duplicate results
@@ -239,7 +240,7 @@ internal class ExtensionInstaller(private val context: Context) {
 
             // Set next installation step
             if (uri == null) {
-                Timber.e("Couldn't locate downloaded APK")
+                logcat(LogPriority.ERROR) { "Couldn't locate downloaded APK" }
                 downloadsRelay.call(id to InstallStep.Error)
                 return
             }
@@ -248,7 +249,7 @@ internal class ExtensionInstaller(private val context: Context) {
             downloadManager.query(query).use { cursor ->
                 if (cursor.moveToFirst()) {
                     val localUri = cursor.getString(
-                        cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI)
+                        cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI),
                     ).removePrefix(FILE_SCHEME)
 
                     installApk(id, File(localUri).getUriCompat(context))

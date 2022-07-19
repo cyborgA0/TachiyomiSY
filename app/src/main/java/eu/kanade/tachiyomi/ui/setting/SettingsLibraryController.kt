@@ -7,22 +7,27 @@ import androidx.core.content.ContextCompat
 import androidx.core.text.buildSpannedString
 import androidx.preference.PreferenceScreen
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import eu.kanade.domain.category.interactor.GetCategories
+import eu.kanade.domain.category.model.Category
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
-import eu.kanade.tachiyomi.data.database.models.Category
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
-import eu.kanade.tachiyomi.data.preference.CHARGING
-import eu.kanade.tachiyomi.data.preference.PreferenceValues
+import eu.kanade.tachiyomi.data.preference.DEVICE_BATTERY_NOT_LOW
+import eu.kanade.tachiyomi.data.preference.DEVICE_CHARGING
+import eu.kanade.tachiyomi.data.preference.DEVICE_NETWORK_NOT_METERED
+import eu.kanade.tachiyomi.data.preference.DEVICE_ONLY_ON_WIFI
+import eu.kanade.tachiyomi.data.preference.MANGA_HAS_UNREAD
+import eu.kanade.tachiyomi.data.preference.MANGA_NON_COMPLETED
+import eu.kanade.tachiyomi.data.preference.MANGA_NON_READ
+import eu.kanade.tachiyomi.data.preference.PreferenceValues.GroupLibraryMode
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
-import eu.kanade.tachiyomi.data.preference.UNMETERED_NETWORK
-import eu.kanade.tachiyomi.data.preference.asImmediateFlow
 import eu.kanade.tachiyomi.data.track.TrackManager
 import eu.kanade.tachiyomi.databinding.PrefLibraryColumnsBinding
 import eu.kanade.tachiyomi.ui.base.controller.DialogController
-import eu.kanade.tachiyomi.ui.base.controller.withFadeTransaction
+import eu.kanade.tachiyomi.ui.base.controller.pushController
 import eu.kanade.tachiyomi.ui.category.CategoryController
 import eu.kanade.tachiyomi.ui.category.genre.SortTagController
 import eu.kanade.tachiyomi.ui.library.LibrarySettingsSheet
+import eu.kanade.tachiyomi.util.preference.bindTo
 import eu.kanade.tachiyomi.util.preference.defaultValue
 import eu.kanade.tachiyomi.util.preference.entriesRes
 import eu.kanade.tachiyomi.util.preference.intListPreference
@@ -35,12 +40,12 @@ import eu.kanade.tachiyomi.util.preference.preferenceCategory
 import eu.kanade.tachiyomi.util.preference.summaryRes
 import eu.kanade.tachiyomi.util.preference.switchPreference
 import eu.kanade.tachiyomi.util.preference.titleRes
-import eu.kanade.tachiyomi.util.system.isTablet
 import eu.kanade.tachiyomi.widget.materialdialogs.QuadStateTextView
 import eu.kanade.tachiyomi.widget.materialdialogs.setQuadStateMultiChoiceItems
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.runBlocking
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -48,19 +53,21 @@ import eu.kanade.tachiyomi.data.preference.PreferenceKeys as Keys
 
 class SettingsLibraryController : SettingsController() {
 
-    private val db: DatabaseHelper = Injekt.get()
+    private val getCategories: GetCategories by injectLazy()
     private val trackManager: TrackManager by injectLazy()
 
+    // SY -->
     /**
      * Sheet containing filter/sort/display items.
      */
     private var settingsSheet: LibrarySettingsSheet? = null
+    // SY <--
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) = screen.apply {
         titleRes = R.string.pref_category_library
 
-        val dbCategories = db.getCategories().executeAsBlocking()
-        val categories = listOf(Category.createDefault(context)) + dbCategories
+        val dbCategories = runBlocking { getCategories.await() }
+        val categories = listOf(Category.default(context)) + dbCategories
 
         preferenceCategory {
             titleRes = R.string.pref_category_display
@@ -80,7 +87,7 @@ class SettingsLibraryController : SettingsController() {
                     }
                 }
 
-                preferences.portraitColumns().asFlow().combine(preferences.landscapeColumns().asFlow()) { portraitCols, landscapeCols -> Pair(portraitCols, landscapeCols) }
+                combine(preferences.portraitColumns().asFlow(), preferences.landscapeColumns().asFlow()) { portraitCols, landscapeCols -> Pair(portraitCols, landscapeCols) }
                     .onEach { (portraitCols, landscapeCols) ->
                         val portrait = getColumnValue(portraitCols)
                         val landscape = getColumnValue(landscapeCols)
@@ -88,13 +95,6 @@ class SettingsLibraryController : SettingsController() {
                             "${context.getString(R.string.landscape)}: $landscape"
                     }
                     .launchIn(viewScope)
-            }
-            if (!context.isTablet()) {
-                switchPreference {
-                    key = Keys.jumpToChapters
-                    titleRes = R.string.pref_jump_to_chapters
-                    defaultValue = false
-                }
             }
             // SY -->
             preference {
@@ -124,7 +124,7 @@ class SettingsLibraryController : SettingsController() {
                 summary = context.resources.getQuantityString(R.plurals.num_categories, catCount, catCount)
 
                 onClick {
-                    router.pushController(CategoryController().withFadeTransaction())
+                    router.pushController(CategoryController())
                 }
             }
 
@@ -137,21 +137,20 @@ class SettingsLibraryController : SettingsController() {
                 entryValues = arrayOf("-1") + categories.map { it.id.toString() }.toTypedArray()
                 defaultValue = "-1"
 
-                val selectedCategory = categories.find { it.id == preferences.defaultCategory() }
+                val selectedCategory = categories.find { it.id == preferences.defaultCategory().toLong() }
                 summary = selectedCategory?.name
                     ?: context.getString(R.string.default_category_summary)
                 onChange { newValue ->
                     summary = categories.find {
-                        it.id == (newValue as String).toInt()
+                        it.id == (newValue as String).toLong()
                     }?.name ?: context.getString(R.string.default_category_summary)
                     true
                 }
             }
 
             switchPreference {
-                key = Keys.categorizedDisplay
+                bindTo(preferences.categorizedDisplaySettings())
                 titleRes = R.string.categorized_display_settings
-                defaultValue = false
             }
         }
 
@@ -159,21 +158,17 @@ class SettingsLibraryController : SettingsController() {
             titleRes = R.string.pref_category_library_update
 
             intListPreference {
-                key = Keys.libraryUpdateInterval
+                bindTo(preferences.libraryUpdateInterval())
                 titleRes = R.string.pref_library_update_interval
                 entriesRes = arrayOf(
                     R.string.update_never,
-                    R.string.update_3hour,
-                    R.string.update_4hour,
-                    R.string.update_6hour,
-                    R.string.update_8hour,
                     R.string.update_12hour,
                     R.string.update_24hour,
                     R.string.update_48hour,
-                    R.string.update_weekly
+                    R.string.update_72hour,
+                    R.string.update_weekly,
                 )
-                entryValues = arrayOf("0", "3", "4", "6", "8", "12", "24", "48", "168")
-                defaultValue = "24"
+                entryValues = arrayOf("0", "12", "24", "48", "72", "168")
                 summary = "%s"
 
                 onChange { newValue ->
@@ -183,14 +178,12 @@ class SettingsLibraryController : SettingsController() {
                 }
             }
             multiSelectListPreference {
-                key = Keys.libraryUpdateRestriction
+                bindTo(preferences.libraryUpdateDeviceRestriction())
                 titleRes = R.string.pref_library_update_restriction
-                entriesRes = arrayOf(R.string.network_unmetered, R.string.charging)
-                entryValues = arrayOf(UNMETERED_NETWORK, CHARGING)
-                defaultValue = setOf(UNMETERED_NETWORK)
+                entriesRes = arrayOf(R.string.connected_to_wifi, R.string.network_not_metered, R.string.charging, R.string.battery_not_low)
+                entryValues = arrayOf(DEVICE_ONLY_ON_WIFI, DEVICE_NETWORK_NOT_METERED, DEVICE_CHARGING, DEVICE_BATTERY_NOT_LOW)
 
-                preferences.libraryUpdateInterval().asImmediateFlow { isVisible = it > 0 }
-                    .launchIn(viewScope)
+                visibleIf(preferences.libraryUpdateInterval()) { it > 0 }
 
                 onChange {
                     // Post to event looper to allow the preference to be updated.
@@ -199,12 +192,14 @@ class SettingsLibraryController : SettingsController() {
                 }
 
                 fun updateSummary() {
-                    val restrictions = preferences.libraryUpdateRestriction().get()
+                    val restrictions = preferences.libraryUpdateDeviceRestriction().get()
                         .sorted()
                         .map {
                             when (it) {
-                                UNMETERED_NETWORK -> context.getString(R.string.network_unmetered)
-                                CHARGING -> context.getString(R.string.charging)
+                                DEVICE_ONLY_ON_WIFI -> context.getString(R.string.connected_to_wifi)
+                                DEVICE_NETWORK_NOT_METERED -> context.getString(R.string.network_not_metered)
+                                DEVICE_CHARGING -> context.getString(R.string.charging)
+                                DEVICE_BATTERY_NOT_LOW -> context.getString(R.string.battery_not_low)
                                 else -> it
                             }
                         }
@@ -217,39 +212,69 @@ class SettingsLibraryController : SettingsController() {
                     summary = context.getString(R.string.restrictions, restrictionsText)
                 }
 
-                preferences.libraryUpdateRestriction().asFlow()
+                preferences.libraryUpdateDeviceRestriction().asFlow()
                     .onEach { updateSummary() }
                     .launchIn(viewScope)
             }
-            switchPreference {
-                key = Keys.updateOnlyNonCompleted
-                titleRes = R.string.pref_update_only_non_completed
-                defaultValue = false
+            multiSelectListPreference {
+                bindTo(preferences.libraryUpdateMangaRestriction())
+                titleRes = R.string.pref_library_update_manga_restriction
+                entriesRes = arrayOf(R.string.pref_update_only_completely_read, R.string.pref_update_only_started, R.string.pref_update_only_non_completed)
+                entryValues = arrayOf(MANGA_HAS_UNREAD, MANGA_NON_READ, MANGA_NON_COMPLETED)
+
+                fun updateSummary() {
+                    val restrictions = preferences.libraryUpdateMangaRestriction().get().sorted()
+                        .map {
+                            when (it) {
+                                MANGA_NON_READ -> context.getString(R.string.pref_update_only_started)
+                                MANGA_HAS_UNREAD -> context.getString(R.string.pref_update_only_completely_read)
+                                MANGA_NON_COMPLETED -> context.getString(R.string.pref_update_only_non_completed)
+                                else -> it
+                            }
+                        }
+                    val restrictionsText = if (restrictions.isEmpty()) {
+                        context.getString(R.string.none)
+                    } else {
+                        restrictions.joinToString()
+                    }
+
+                    summary = restrictionsText
+                }
+
+                preferences.libraryUpdateMangaRestriction().asFlow()
+                    .onEach { updateSummary() }
+                    .launchIn(viewScope)
             }
             preference {
-                key = Keys.libraryUpdateCategories
+                bindTo(preferences.libraryUpdateCategories())
                 titleRes = R.string.categories
+
                 onClick {
                     LibraryGlobalUpdateCategoriesDialog().showDialog(router)
                 }
 
                 fun updateSummary() {
-                    val selectedCategories = preferences.libraryUpdateCategories().get()
-                        .mapNotNull { id -> categories.find { it.id == id.toInt() } }
+                    val includedCategories = preferences.libraryUpdateCategories().get()
+                        .mapNotNull { id -> categories.find { it.id == id.toLong() } }
                         .sortedBy { it.order }
-                    val includedItemsText = if (selectedCategories.isEmpty()) {
-                        context.getString(R.string.all)
-                    } else {
-                        selectedCategories.joinToString { it.name }
-                    }
-
                     val excludedCategories = preferences.libraryUpdateCategoriesExclude().get()
-                        .mapNotNull { id -> categories.find { it.id == id.toInt() } }
+                        .mapNotNull { id -> categories.find { it.id == id.toLong() } }
                         .sortedBy { it.order }
-                    val excludedItemsText = if (excludedCategories.isEmpty()) {
-                        context.getString(R.string.none)
-                    } else {
-                        excludedCategories.joinToString { it.name }
+
+                    val allExcluded = excludedCategories.size == categories.size
+
+                    val includedItemsText = when {
+                        // Some selected, but not all
+                        includedCategories.isNotEmpty() && includedCategories.size != categories.size -> includedCategories.joinToString { it.name }
+                        // All explicitly selected
+                        includedCategories.size == categories.size -> context.getString(R.string.all)
+                        allExcluded -> context.getString(R.string.none)
+                        else -> context.getString(R.string.all)
+                    }
+                    val excludedItemsText = when {
+                        excludedCategories.isEmpty() -> context.getString(R.string.none)
+                        allExcluded -> context.getString(R.string.all)
+                        else -> excludedCategories.joinToString { it.name }
                     }
 
                     summary = buildSpannedString {
@@ -268,48 +293,21 @@ class SettingsLibraryController : SettingsController() {
             }
             // SY -->
             listPreference {
-                key = Keys.groupLibraryUpdateType
+                bindTo(preferences.groupLibraryUpdateType())
                 titleRes = R.string.library_group_updates
                 entriesRes = arrayOf(
                     R.string.library_group_updates_global,
                     R.string.library_group_updates_all_but_ungrouped,
-                    R.string.library_group_updates_all
+                    R.string.library_group_updates_all,
                 )
                 entryValues = arrayOf(
-                    PreferenceValues.GroupLibraryMode.GLOBAL.name,
-                    PreferenceValues.GroupLibraryMode.ALL_BUT_UNGROUPED.name,
-                    PreferenceValues.GroupLibraryMode.ALL.name
+                    GroupLibraryMode.GLOBAL.name,
+                    GroupLibraryMode.ALL_BUT_UNGROUPED.name,
+                    GroupLibraryMode.ALL.name,
                 )
-                defaultValue = PreferenceValues.GroupLibraryMode.GLOBAL.name
                 summary = "%s"
             }
             // SY <--
-            intListPreference {
-                key = Keys.libraryUpdatePrioritization
-                titleRes = R.string.pref_library_update_prioritization
-
-                // The following array lines up with the list rankingScheme in:
-                // ../../data/library/LibraryUpdateRanker.kt
-                val priorities = arrayOf(
-                    Pair("0", R.string.action_sort_alpha),
-                    Pair("1", R.string.action_sort_last_checked),
-                    Pair("2", R.string.action_sort_next_updated)
-                )
-                val defaultPriority = priorities[0]
-
-                entriesRes = priorities.map { it.second }.toTypedArray()
-                entryValues = priorities.map { it.first }.toTypedArray()
-                defaultValue = defaultPriority.first
-
-                val selectedPriority = priorities.find { it.first.toInt() == preferences.libraryUpdatePrioritization().get() }
-                summaryRes = selectedPriority?.second ?: defaultPriority.second
-                onChange { newValue ->
-                    summaryRes = priorities.find {
-                        it.first == (newValue as String)
-                    }?.second ?: defaultPriority.second
-                    true
-                }
-            }
             switchPreference {
                 key = Keys.autoUpdateMetadata
                 titleRes = R.string.pref_library_update_refresh_metadata
@@ -335,7 +333,7 @@ class SettingsLibraryController : SettingsController() {
                 val count = preferences.sortTagsForLibrary().get().size
                 summary = context.resources.getQuantityString(R.plurals.pref_tag_sorting_desc, count, count)
                 onClick {
-                    router.pushController(SortTagController().withFadeTransaction())
+                    router.pushController(SortTagController())
                 }
             }
         }
@@ -347,10 +345,9 @@ class SettingsLibraryController : SettingsController() {
                 titleRes = R.string.migration
 
                 switchPreference {
-                    key = Keys.skipPreMigration
+                    bindTo(preferences.skipPreMigration())
                     titleRes = R.string.skip_pre_migration
                     summaryRes = R.string.pref_skip_pre_migration_summary
-                    defaultValue = false
                 }
             }
         }
@@ -403,18 +400,22 @@ class SettingsLibraryController : SettingsController() {
     class LibraryGlobalUpdateCategoriesDialog : DialogController() {
 
         private val preferences: PreferencesHelper = Injekt.get()
-        private val db: DatabaseHelper = Injekt.get()
+        private val getCategories: GetCategories = Injekt.get()
 
         override fun onCreateDialog(savedViewState: Bundle?): Dialog {
-            val dbCategories = db.getCategories().executeAsBlocking()
-            val categories = listOf(Category.createDefault(activity!!)) + dbCategories
+            val dbCategories = runBlocking { getCategories.await() }
+            val categories = listOf(Category.default(activity!!)) + dbCategories
 
             val items = categories.map { it.name }
             var selected = categories
                 .map {
                     when (it.id.toString()) {
-                        in preferences.libraryUpdateCategories().get() -> QuadStateTextView.State.CHECKED.ordinal
-                        in preferences.libraryUpdateCategoriesExclude().get() -> QuadStateTextView.State.INVERSED.ordinal
+                        in preferences.libraryUpdateCategories()
+                            .get(),
+                        -> QuadStateTextView.State.CHECKED.ordinal
+                        in preferences.libraryUpdateCategoriesExclude()
+                            .get(),
+                        -> QuadStateTextView.State.INVERSED.ordinal
                         else -> QuadStateTextView.State.UNCHECKED.ordinal
                     }
                 }
@@ -425,7 +426,7 @@ class SettingsLibraryController : SettingsController() {
                 .setQuadStateMultiChoiceItems(
                     message = R.string.pref_library_update_categories_details,
                     items = items,
-                    initialSelected = selected
+                    initialSelected = selected,
                 ) { selections ->
                     selected = selections
                 }

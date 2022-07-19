@@ -5,13 +5,12 @@ import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.ActionMode
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
 import dev.chrisbanes.insetter.applyInsetter
 import eu.davidea.flexibleadapter.FlexibleAdapter
 import eu.davidea.flexibleadapter.SelectableAdapter
-import eu.davidea.flexibleadapter.items.IFlexible
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.DownloadService
 import eu.kanade.tachiyomi.data.download.model.Download
@@ -20,19 +19,23 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.databinding.UpdatesControllerBinding
 import eu.kanade.tachiyomi.ui.base.controller.NucleusController
 import eu.kanade.tachiyomi.ui.base.controller.RootController
-import eu.kanade.tachiyomi.ui.base.controller.withFadeTransaction
+import eu.kanade.tachiyomi.ui.base.controller.pushController
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.manga.MangaController
 import eu.kanade.tachiyomi.ui.manga.chapter.base.BaseChaptersAdapter
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import eu.kanade.tachiyomi.util.system.logcat
 import eu.kanade.tachiyomi.util.system.notificationManager
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.onAnimationsFinished
+import eu.kanade.tachiyomi.widget.ActionModeWithToolbar
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import logcat.LogPriority
 import reactivecircus.flowbinding.recyclerview.scrollStateChanges
 import reactivecircus.flowbinding.swiperefreshlayout.refreshes
-import timber.log.Timber
 
 /**
  * Fragment that shows recent chapters.
@@ -40,7 +43,7 @@ import timber.log.Timber
 class UpdatesController :
     NucleusController<UpdatesControllerBinding, UpdatesPresenter>(),
     RootController,
-    ActionMode.Callback,
+    ActionModeWithToolbar.Callback,
     FlexibleAdapter.OnItemClickListener,
     FlexibleAdapter.OnItemLongClickListener,
     FlexibleAdapter.OnUpdateListener,
@@ -51,7 +54,7 @@ class UpdatesController :
     /**
      * Action mode for multiple selection.
      */
-    private var actionMode: ActionMode? = null
+    private var actionMode: ActionModeWithToolbar? = null
 
     /**
      * Adapter containing the recent chapters.
@@ -80,11 +83,6 @@ class UpdatesController :
                 padding()
             }
         }
-        binding.actionToolbar.applyInsetter {
-            type(navigationBars = true) {
-                margin(bottom = true, horizontal = true)
-            }
-        }
 
         view.context.notificationManager.cancel(Notifications.ID_NEW_CHAPTERS)
 
@@ -92,10 +90,6 @@ class UpdatesController :
         val layoutManager = LinearLayoutManager(view.context)
         binding.recycler.layoutManager = layoutManager
         binding.recycler.setHasFixedSize(true)
-        adapter = UpdatesAdapter(this@UpdatesController, view.context)
-        binding.recycler.adapter = adapter
-        adapter?.fastScroller = binding.fastScroller
-
         binding.recycler.scrollStateChanges()
             .onEach {
                 // Disable swipe refresh when view is not at the top
@@ -104,6 +98,7 @@ class UpdatesController :
             }
             .launchIn(viewScope)
 
+        binding.swipeRefresh.isRefreshing = true
         binding.swipeRefresh.setDistanceToTriggerSync((2 * 64 * view.resources.displayMetrics.density).toInt())
         binding.swipeRefresh.refreshes()
             .onEach {
@@ -113,11 +108,28 @@ class UpdatesController :
                 binding.swipeRefresh.isRefreshing = false
             }
             .launchIn(viewScope)
+
+        viewScope.launch {
+            presenter.updates.collectLatest { updatesItems ->
+                destroyActionModeIfNeeded()
+                if (adapter == null) {
+                    adapter = UpdatesAdapter(this@UpdatesController, binding.recycler.context, updatesItems)
+                    binding.recycler.adapter = adapter
+                    adapter!!.fastScroller = binding.fastScroller
+                } else {
+                    adapter?.updateDataSet(updatesItems)
+                }
+                binding.swipeRefresh.isRefreshing = false
+                binding.fastScroller.isVisible = true
+                binding.recycler.onAnimationsFinished {
+                    (activity as? MainActivity)?.ready = true
+                }
+            }
+        }
     }
 
     override fun onDestroyView(view: View) {
         destroyActionModeIfNeeded()
-        binding.actionToolbar.destroy()
         adapter = null
         super.onDestroyView(view)
     }
@@ -174,15 +186,11 @@ class UpdatesController :
      * @param position position of clicked item
      */
     override fun onItemLongClick(position: Int) {
-        if (actionMode == null) {
-            actionMode = (activity as AppCompatActivity).startSupportActionMode(this)
-            binding.actionToolbar.show(
-                actionMode!!,
-                R.menu.updates_chapter_selection
-            ) { onActionItemClicked(it!!) }
-            (activity as? MainActivity)?.showBottomNav(false)
+        val activity = activity
+        if (actionMode == null && activity is MainActivity) {
+            actionMode = activity.startActionModeAndToolbar(this)
+            activity.showBottomNav(false)
         }
-
         toggleSelection(position)
     }
 
@@ -202,7 +210,7 @@ class UpdatesController :
      */
     private fun openChapter(item: UpdatesItem) {
         val activity = activity ?: return
-        val intent = ReaderActivity.newIntent(activity, item.manga, item.chapter)
+        val intent = ReaderActivity.newIntent(activity, item.manga.id, item.chapter.id)
         startActivity(intent)
     }
 
@@ -213,18 +221,6 @@ class UpdatesController :
     private fun downloadChapters(chapters: List<UpdatesItem>) {
         presenter.downloadChapters(chapters)
         destroyActionModeIfNeeded()
-    }
-
-    /**
-     * Populate adapter with chapters
-     * @param chapters list of [Any]
-     */
-    fun onNextRecentChapters(chapters: List<IFlexible<*>>) {
-        destroyActionModeIfNeeded()
-        adapter?.updateDataSet(chapters)
-        binding.recycler.onAnimationsFinished {
-            (activity as? MainActivity)?.ready = true
-        }
     }
 
     override fun onUpdateEmptyView(size: Int) {
@@ -253,9 +249,6 @@ class UpdatesController :
      */
     private fun markAsRead(chapters: List<UpdatesItem>) {
         presenter.markChapterRead(chapters, true)
-        if (presenter.preferences.removeAfterMarkedAsRead()) {
-            deleteChapters(chapters)
-        }
         destroyActionModeIfNeeded()
     }
 
@@ -285,7 +278,7 @@ class UpdatesController :
     }
 
     private fun openManga(chapter: UpdatesItem) {
-        router.pushController(MangaController(chapter.manga).withFadeTransaction())
+        router.pushController(MangaController(chapter.manga.id!!))
     }
 
     /**
@@ -300,7 +293,7 @@ class UpdatesController :
      * @param error error message
      */
     fun onChaptersDeletedError(error: Throwable) {
-        Timber.e(error)
+        logcat(LogPriority.ERROR, error)
     }
 
     override fun downloadChapter(position: Int) {
@@ -320,8 +313,8 @@ class UpdatesController :
     }
 
     override fun startDownloadNow(position: Int) {
-        val chapter = adapter?.getItem(position) as? UpdatesItem ?: return
-        presenter.startDownloadingNow(chapter)
+        val item = adapter?.getItem(position) as? UpdatesItem ?: return
+        presenter.startDownloadingNow(item.chapter)
     }
 
     private fun bookmarkChapters(chapters: List<UpdatesItem>, bookmarked: Boolean) {
@@ -340,6 +333,10 @@ class UpdatesController :
         return true
     }
 
+    override fun onCreateActionToolbar(menuInflater: MenuInflater, menu: Menu) {
+        menuInflater.inflate(R.menu.updates_chapter_selection, menu)
+    }
+
     override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
         val count = adapter?.selectedItemCount ?: 0
         if (count == 0) {
@@ -347,17 +344,19 @@ class UpdatesController :
             destroyActionModeIfNeeded()
         } else {
             mode.title = count.toString()
-
-            val chapters = getSelectedChapters()
-            binding.actionToolbar.findItem(R.id.action_download)?.isVisible = chapters.any { !it.isDownloaded }
-            binding.actionToolbar.findItem(R.id.action_delete)?.isVisible = chapters.any { it.isDownloaded }
-            binding.actionToolbar.findItem(R.id.action_bookmark)?.isVisible = chapters.any { !it.bookmark }
-            binding.actionToolbar.findItem(R.id.action_remove_bookmark)?.isVisible = chapters.all { it.bookmark }
-            binding.actionToolbar.findItem(R.id.action_mark_as_read)?.isVisible = chapters.any { !it.chapter.read }
-            binding.actionToolbar.findItem(R.id.action_mark_as_unread)?.isVisible = chapters.all { it.chapter.read }
         }
+        return true
+    }
 
-        return false
+    override fun onPrepareActionToolbar(toolbar: ActionModeWithToolbar, menu: Menu) {
+        val chapters = getSelectedChapters()
+        if (chapters.isEmpty()) return
+        toolbar.findToolbarItem(R.id.action_download)?.isVisible = chapters.any { !it.isDownloaded }
+        toolbar.findToolbarItem(R.id.action_delete)?.isVisible = chapters.any { it.isDownloaded }
+        toolbar.findToolbarItem(R.id.action_bookmark)?.isVisible = chapters.any { !it.chapter.bookmark }
+        toolbar.findToolbarItem(R.id.action_remove_bookmark)?.isVisible = chapters.all { it.chapter.bookmark }
+        toolbar.findToolbarItem(R.id.action_mark_as_read)?.isVisible = chapters.any { !it.chapter.read }
+        toolbar.findToolbarItem(R.id.action_mark_as_unread)?.isVisible = chapters.all { it.chapter.read }
     }
 
     /**
@@ -390,11 +389,10 @@ class UpdatesController :
      * Called when ActionMode destroyed
      * @param mode the ActionMode object
      */
-    override fun onDestroyActionMode(mode: ActionMode?) {
+    override fun onDestroyActionMode(mode: ActionMode) {
         adapter?.mode = SelectableAdapter.Mode.IDLE
         adapter?.clearSelection()
 
-        binding.actionToolbar.hide()
         (activity as? MainActivity)?.showBottomNav(true)
 
         actionMode = null

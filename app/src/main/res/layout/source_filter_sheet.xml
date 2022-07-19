@@ -8,11 +8,10 @@
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorSurface"
+        android:background="@drawable/transparent_tabs_background"
         android:elevation="2dp"
         android:gravity="center"
-        android:paddingStart="?attr/listPreferredItemPaddingStart"
-        android:paddingEnd="?attr/listPreferredItemPaddingEnd">
+        android:paddingHorizontal="?attr/listPreferredItemPaddingStart">
 
         <Button
             android:id="@+id/reset_btn"
@@ -30,14 +29,14 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:contentDescription="@string/action_save"
-            android:tint="?attr/colorAccent"
             android:background="?attr/selectableItemBackgroundBorderless"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toStartOf="@+id/filter_btn"
             app:layout_constraintHorizontal_bias="1"
             app:layout_constraintStart_toEndOf="@+id/reset_btn"
             app:layout_constraintTop_toTopOf="parent"
-            app:srcCompat="@drawable/ic_save_black_24dp" />
+            app:srcCompat="@drawable/ic_save_black_24dp"
+            app:tint="?attr/colorAccent" />
 
         <Button
             android:id="@+id/filter_btn"

@@ -2,22 +2,37 @@ package eu.kanade.tachiyomi.ui.reader
 
 import android.app.Application
 import android.content.Context
-import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
 import androidx.annotation.ColorInt
 import com.jakewharton.rxrelay.BehaviorRelay
-import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.cache.CoverCache
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
-import eu.kanade.tachiyomi.data.database.models.Chapter
-import eu.kanade.tachiyomi.data.database.models.History
+import eu.kanade.domain.chapter.interactor.GetChapterByMangaId
+import eu.kanade.domain.chapter.interactor.UpdateChapter
+import eu.kanade.domain.chapter.model.ChapterUpdate
+import eu.kanade.domain.chapter.model.toDbChapter
+import eu.kanade.domain.history.interactor.UpsertHistory
+import eu.kanade.domain.history.model.HistoryUpdate
+import eu.kanade.domain.manga.interactor.GetFlatMetadataById
+import eu.kanade.domain.manga.interactor.GetManga
+import eu.kanade.domain.manga.interactor.GetMergedManga
+import eu.kanade.domain.manga.interactor.GetMergedReferencesById
+import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
+import eu.kanade.domain.manga.model.isLocal
+import eu.kanade.domain.manga.model.toDbManga
+import eu.kanade.domain.track.interactor.GetTracks
+import eu.kanade.domain.track.interactor.InsertTrack
+import eu.kanade.domain.track.model.toDbTrack
 import eu.kanade.tachiyomi.data.database.models.Manga
+import eu.kanade.tachiyomi.data.database.models.toDomainChapter
+import eu.kanade.tachiyomi.data.database.models.toDomainManga
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
+import eu.kanade.tachiyomi.data.saver.Image
+import eu.kanade.tachiyomi.data.saver.ImageSaver
+import eu.kanade.tachiyomi.data.saver.Location
 import eu.kanade.tachiyomi.data.track.TrackManager
 import eu.kanade.tachiyomi.data.track.job.DelayedTrackingStore
 import eu.kanade.tachiyomi.data.track.job.DelayedTrackingUpdateJob
-import eu.kanade.tachiyomi.source.LocalSource
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.MetadataSource
@@ -25,6 +40,7 @@ import eu.kanade.tachiyomi.source.online.all.MergedSource
 import eu.kanade.tachiyomi.ui.base.presenter.BasePresenter
 import eu.kanade.tachiyomi.ui.reader.chapter.ReaderChapterItem
 import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
+import eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -32,20 +48,20 @@ import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.setting.OrientationType
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingModeType
 import eu.kanade.tachiyomi.util.chapter.getChapterSort
-import eu.kanade.tachiyomi.util.isLocal
+import eu.kanade.tachiyomi.util.editCover
 import eu.kanade.tachiyomi.util.lang.byteSize
 import eu.kanade.tachiyomi.util.lang.launchIO
+import eu.kanade.tachiyomi.util.lang.launchUI
 import eu.kanade.tachiyomi.util.lang.takeBytes
+import eu.kanade.tachiyomi.util.lang.withUIContext
 import eu.kanade.tachiyomi.util.storage.DiskUtil
-import eu.kanade.tachiyomi.util.storage.getPicturesDir
-import eu.kanade.tachiyomi.util.storage.getTempShareDir
+import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import eu.kanade.tachiyomi.util.system.ImageUtil
 import eu.kanade.tachiyomi.util.system.isOnline
-import eu.kanade.tachiyomi.util.updateCoverLastModified
+import eu.kanade.tachiyomi.util.system.logcat
 import exh.md.utils.FollowStatus
 import exh.md.utils.MdUtil
 import exh.metadata.metadata.base.RaisedSearchMetadata
-import exh.metadata.metadata.base.getFlatMetadataForManga
 import exh.source.MERGED_SOURCE_ID
 import exh.source.getMainSource
 import exh.source.isEhBasedManga
@@ -53,29 +69,43 @@ import exh.util.defaultReaderType
 import exh.util.mangaType
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
+import logcat.LogPriority
 import rx.Observable
 import rx.Subscription
 import rx.android.schedulers.AndroidSchedulers
 import rx.schedulers.Schedulers
-import timber.log.Timber
+import tachiyomi.decoder.ImageDecoder
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.io.File
+import uy.kohesive.injekt.injectLazy
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Date
 import java.util.concurrent.TimeUnit
+import eu.kanade.domain.chapter.model.Chapter as DomainChapter
+import eu.kanade.domain.manga.model.Manga as DomainManga
 
 /**
  * Presenter used by the activity to perform background operations.
  */
 class ReaderPresenter(
-    private val db: DatabaseHelper = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
     private val downloadManager: DownloadManager = Injekt.get(),
-    private val coverCache: CoverCache = Injekt.get(),
     private val preferences: PreferencesHelper = Injekt.get(),
     private val delayedTrackingStore: DelayedTrackingStore = Injekt.get(),
+    private val getManga: GetManga = Injekt.get(),
+    private val getChapterByMangaId: GetChapterByMangaId = Injekt.get(),
+    private val getTracks: GetTracks = Injekt.get(),
+    private val insertTrack: InsertTrack = Injekt.get(),
+    private val upsertHistory: UpsertHistory = Injekt.get(),
+    private val updateChapter: UpdateChapter = Injekt.get(),
+    private val setMangaViewerFlags: SetMangaViewerFlags = Injekt.get(),
+    // SY -->
+    private val getFlatMetadataById: GetFlatMetadataById = Injekt.get(),
+    private val getMergedManga: GetMergedManga = Injekt.get(),
+    private val getMergedReferencesById: GetMergedReferencesById = Injekt.get(),
+    // SY <--
 ) : BasePresenter<ReaderActivity>() {
 
     /**
@@ -87,7 +117,7 @@ class ReaderPresenter(
     // SY -->
     var meta: RaisedSearchMetadata? = null
         private set
-    var mergedManga: Map<Long, Manga>? = null
+    var mergedManga: Map<Long, DomainManga>? = null
         private set
     // SY <--
 
@@ -102,6 +132,11 @@ class ReaderPresenter(
     private var loader: ChapterLoader? = null
 
     /**
+     * The time the chapter was started reading
+     */
+    private var chapterReadStartTime: Long? = null
+
+    /**
      * Subscription to prevent setting chapters as active from multiple threads.
      */
     private var activeChapterSubscription: Subscription? = null
@@ -109,12 +144,15 @@ class ReaderPresenter(
     /**
      * Relay for currently active viewer chapters.
      */
-    /* [EXH] private */ val viewerChaptersRelay = BehaviorRelay.create<ViewerChapters>()
+    /* [EXH] private */
+    val viewerChaptersRelay = BehaviorRelay.create<ViewerChapters>()
 
     /**
      * Relay used when loading prev/next chapter needed to lock the UI (with a dialog).
      */
     private val isLoadingAdjacentChapterRelay = BehaviorRelay.create<Boolean>()
+
+    private val imageSaver: ImageSaver by injectLazy()
 
     /**
      * Chapter list for the active manga. It's retrieved lazily and should be accessed for the first
@@ -125,25 +163,28 @@ class ReaderPresenter(
         // SY -->
         val filteredScanlators = manga.filtered_scanlators?.let { MdUtil.getScanlators(it) }
         // SY <--
-        val dbChapters = /* SY --> */ if (manga.source == MERGED_SOURCE_ID) {
-            (sourceManager.get(MERGED_SOURCE_ID) as MergedSource)
-                .getChaptersAsBlocking(manga)
-        } else /* SY <-- */ db.getChapters(manga).executeAsBlocking()
+        val chapters = runBlocking {
+            /* SY --> */ if (manga.source == MERGED_SOURCE_ID) {
+                (sourceManager.get(MERGED_SOURCE_ID) as MergedSource)
+                    .getChapters(manga.id!!)
+            } else /* SY <-- */ getChapterByMangaId.await(manga.id!!)
+        }
 
-        val selectedChapter = dbChapters.find { it.id == chapterId }
+        val selectedChapter = chapters.find { it.id == chapterId }
             ?: error("Requested chapter of id $chapterId not found in chapter list")
 
         val chaptersForReader = when {
             (preferences.skipRead() || preferences.skipFiltered()) -> {
-                val list = dbChapters.filterNot {
+                val filteredChapters = chapters.filterNot {
                     when {
                         preferences.skipRead() && it.read -> true
                         preferences.skipFiltered() -> {
-                            (manga.readFilter == Manga.CHAPTER_SHOW_READ && !it.read) ||
-                                (manga.readFilter == Manga.CHAPTER_SHOW_UNREAD && it.read) ||
-                                (manga.downloadedFilter == Manga.CHAPTER_SHOW_DOWNLOADED && !downloadManager.isChapterDownloaded(it, manga)) ||
-                                (manga.downloadedFilter == Manga.CHAPTER_SHOW_NOT_DOWNLOADED && downloadManager.isChapterDownloaded(it, manga)) ||
-                                (manga.bookmarkedFilter == Manga.CHAPTER_SHOW_BOOKMARKED && !it.bookmark) ||
+                            (manga.readFilter == DomainManga.CHAPTER_SHOW_READ.toInt() && !it.read) ||
+                                (manga.readFilter == DomainManga.CHAPTER_SHOW_UNREAD.toInt() && it.read) ||
+                                (manga.downloadedFilter == DomainManga.CHAPTER_SHOW_DOWNLOADED.toInt() && !downloadManager.isChapterDownloaded(it.name, it.scanlator, manga.title, manga.source)) ||
+                                (manga.downloadedFilter == DomainManga.CHAPTER_SHOW_NOT_DOWNLOADED.toInt() && downloadManager.isChapterDownloaded(it.name, it.scanlator, manga.title, manga.source)) ||
+                                (manga.bookmarkedFilter == DomainManga.CHAPTER_SHOW_BOOKMARKED.toInt() && !it.bookmark) ||
+                                (manga.bookmarkedFilter == DomainManga.CHAPTER_SHOW_NOT_BOOKMARKED.toInt() && it.bookmark) ||
                                 // SY -->
                                 (filteredScanlators != null && MdUtil.getScanlators(it.scanlator).none { group -> filteredScanlators.contains(group) })
                             // SY <--
@@ -151,27 +192,26 @@ class ReaderPresenter(
                         else -> false
                     }
                 }
-                    .toMutableList()
 
-                val find = list.find { it.id == chapterId }
-                if (find == null) {
-                    list.add(selectedChapter)
+                if (filteredChapters.any { it.id == chapterId }) {
+                    filteredChapters
+                } else {
+                    filteredChapters + listOf(selectedChapter)
                 }
-                list
             }
-            else -> dbChapters
+            else -> chapters
         }
 
         chaptersForReader
-            .sortedWith(getChapterSort(manga, sortDescending = false))
+            .sortedWith(getChapterSort(manga.toDomainManga()!!, sortDescending = false))
+            .map { it.toDbChapter() }
             .map(::ReaderChapter)
     }
 
     private var hasTrackers: Boolean = false
-    private val checkTrackers: (Manga) -> Unit = { manga ->
-        val tracks = db.getTracks(manga).executeAsBlocking()
-
-        hasTrackers = tracks.size > 0
+    private val checkTrackers: (DomainManga) -> Unit = { manga ->
+        val tracks = runBlocking { getTracks.await(manga.id) }
+        hasTrackers = tracks.isNotEmpty()
     }
 
     private val incognitoMode = preferences.incognitoMode().get()
@@ -196,8 +236,7 @@ class ReaderPresenter(
         val currentChapters = viewerChaptersRelay.value
         if (currentChapters != null) {
             currentChapters.unref()
-            saveChapterProgress(currentChapters.currChapter)
-            saveChapterHistory(currentChapters.currChapter)
+            saveReadingProgress(currentChapters.currChapter)
         }
     }
 
@@ -228,7 +267,9 @@ class ReaderPresenter(
      */
     fun onSaveInstanceStateNonConfigurationChange() {
         val currentChapter = getCurrentChapter() ?: return
-        saveChapterProgress(currentChapter)
+        launchIO {
+            saveChapterProgress(currentChapter)
+        }
     }
 
     /**
@@ -245,28 +286,22 @@ class ReaderPresenter(
     fun init(mangaId: Long, initialChapterId: Long) {
         if (!needsInit()) return
 
-        db.getManga(mangaId).asRxObservable()
-            .first()
-            .observeOn(AndroidSchedulers.mainThread())
-            // SY -->
-            .flatMap { manga ->
+        launchIO {
+            try {
+                // SY -->
+                val manga = getManga.await(mangaId) ?: return@launchIO
                 val source = sourceManager.get(manga.source)?.getMainSource<MetadataSource<*, *>>()
-                if (manga.initialized && source != null) {
-                    db.getFlatMetadataForManga(mangaId).asRxSingle().map {
-                        manga to it?.raise(source.metaClass)
-                    }.toObservable()
-                } else {
-                    Observable.just(manga to null)
+                val metadata = if (source != null) {
+                    getFlatMetadataById.await(mangaId)?.raise(source.metaClass)
+                } else null
+                withUIContext {
+                    init(manga.toDbManga(), initialChapterId, metadata)
                 }
+                // SY <--
+            } catch (e: Throwable) {
+                view?.setInitialChapterError(e)
             }
-            .doOnNext { init(it.first, initialChapterId, it.second) }
-            // SY <--
-            .subscribeFirst(
-                { _, _ ->
-                    // Ignore onNext event
-                },
-                ReaderActivity::setInitialChapterError
-            )
+        }
     }
 
     /**
@@ -282,13 +317,13 @@ class ReaderPresenter(
         // SY <--
         if (chapterId == -1L) chapterId = initialChapterId
 
-        checkTrackers(manga)
+        checkTrackers(manga.toDomainManga()!!)
 
         val context = Injekt.get<Application>()
         val source = sourceManager.getOrStub(manga.source)
-        val mergedReferences = if (source is MergedSource) db.getMergedMangaReferences(manga.id!!).executeAsBlocking() else emptyList()
-        mergedManga = if (source is MergedSource) db.getMergedMangas(manga.id!!).executeAsBlocking().associateBy { it.id!! } else emptyMap()
-        loader = ChapterLoader(context, downloadManager, manga, source, sourceManager, mergedReferences, mergedManga ?: emptyMap())
+        val mergedReferences = if (source is MergedSource) runBlocking { getMergedReferencesById.await(manga.id!!) } else emptyList()
+        mergedManga = if (source is MergedSource) runBlocking { getMergedManga.await() }.associateBy { it.id } else emptyMap()
+        loader = ChapterLoader(context, downloadManager, manga.toDomainManga()!!, source, sourceManager, mergedReferences, mergedManga ?: emptyMap())
 
         Observable.just(manga).subscribeLatestCache(ReaderActivity::setManga)
         viewerChaptersRelay.subscribeLatestCache(ReaderActivity::setChapters)
@@ -305,7 +340,7 @@ class ReaderPresenter(
                 { _, _ ->
                     // Ignore onNext event
                 },
-                ReaderActivity::setInitialChapterError
+                ReaderActivity::setInitialChapterError,
             )
     }
 
@@ -315,17 +350,17 @@ class ReaderPresenter(
         val decimalFormat = DecimalFormat(
             "#.###",
             DecimalFormatSymbols()
-                .apply { decimalSeparator = '.' }
+                .apply { decimalSeparator = '.' },
         )
 
         return chapterList.map {
             ReaderChapterItem(
-                it.chapter,
-                manga!!,
-                it.chapter == currentChapter?.chapter,
+                it.chapter.toDomainChapter()!!,
+                manga!!.toDomainManga()!!,
+                it.chapter.id == currentChapter?.chapter?.id,
                 context,
                 preferences.dateFormat(),
-                decimalFormat
+                decimalFormat,
             )
         }
     }
@@ -340,7 +375,7 @@ class ReaderPresenter(
      */
     private fun getLoadObservable(
         loader: ChapterLoader,
-        chapter: ReaderChapter
+        chapter: ReaderChapter,
     ): Observable<ViewerChapters> {
         return loader.loadChapter(chapter)
             .andThen(
@@ -350,9 +385,9 @@ class ReaderPresenter(
                     ViewerChapters(
                         chapter,
                         chapterList.getOrNull(chapterPos - 1),
-                        chapterList.getOrNull(chapterPos + 1)
+                        chapterList.getOrNull(chapterPos + 1),
                     )
-                }
+                },
             )
             .observeOn(AndroidSchedulers.mainThread())
             .doOnNext { newChapters ->
@@ -373,7 +408,7 @@ class ReaderPresenter(
     private fun loadNewChapter(chapter: ReaderChapter) {
         val loader = loader ?: return
 
-        Timber.d("Loading ${chapter.chapter.url}")
+        logcat { "Loading ${chapter.chapter.url}" }
 
         activeChapterSubscription?.unsubscribe()
         activeChapterSubscription = getLoadObservable(loader, chapter)
@@ -383,7 +418,7 @@ class ReaderPresenter(
             .also(::add)
     }
 
-    fun loadNewChapterFromDialog(chapter: Chapter) {
+    fun loadNewChapterFromDialog(chapter: DomainChapter) {
         val newChapter = chapterList.firstOrNull { it.chapter.id == chapter.id } ?: return
         loadAdjacent(newChapter)
     }
@@ -396,7 +431,7 @@ class ReaderPresenter(
     private fun loadAdjacent(chapter: ReaderChapter) {
         val loader = loader ?: return
 
-        Timber.d("Loading adjacent ${chapter.chapter.url}")
+        logcat { "Loading adjacent ${chapter.chapter.url}" }
 
         activeChapterSubscription?.unsubscribe()
         activeChapterSubscription = getLoadObservable(loader, chapter)
@@ -408,7 +443,7 @@ class ReaderPresenter(
                 },
                 { _, _ ->
                     // Ignore onError event, viewers handle that state
-                }
+                },
             )
     }
 
@@ -417,11 +452,20 @@ class ReaderPresenter(
      * that the user doesn't have to wait too long to continue reading.
      */
     private fun preload(chapter: ReaderChapter) {
+        if (chapter.pageLoader is HttpPageLoader) {
+            val manga = manga ?: return
+            val dbChapter = chapter.chapter
+            val isDownloaded = downloadManager.isChapterDownloaded(dbChapter.name, dbChapter.scanlator, /* SY --> */ manga.originalTitle /* SY <-- */, manga.source)
+            if (isDownloaded) {
+                chapter.state = ReaderChapter.State.Wait
+            }
+        }
+
         if (chapter.state != ReaderChapter.State.Wait && chapter.state !is ReaderChapter.State.Error) {
             return
         }
 
-        Timber.d("Preloading ${chapter.chapter.url}")
+        logcat { "Preloading ${chapter.chapter.url}" }
 
         val loader = loader ?: return
 
@@ -459,12 +503,14 @@ class ReaderPresenter(
             selectedChapter.chapter.read = true
             // SY -->
             if (manga?.isEhBasedManga() == true) {
-                chapterList
-                    .filter { it.chapter.source_order > selectedChapter.chapter.source_order }
-                    .onEach {
-                        it.chapter.read = true
-                        saveChapterProgress(it)
-                    }
+                launchIO {
+                    chapterList
+                        .filter { it.chapter.source_order > selectedChapter.chapter.source_order }
+                        .onEach {
+                            it.chapter.read = true
+                            saveChapterProgress(it)
+                        }
+                }
             }
             // SY <--
             updateTrackChapterRead(selectedChapter)
@@ -473,8 +519,8 @@ class ReaderPresenter(
         }
 
         if (selectedChapter != currentChapters.currChapter) {
-            Timber.d("Setting ${selectedChapter.chapter.url} as active")
-            onChapterChanged(currentChapters.currChapter)
+            logcat { "Setting ${selectedChapter.chapter.url} as active" }
+            saveReadingProgress(currentChapters.currChapter)
             loadNewChapter(selectedChapter)
         }
     }
@@ -506,39 +552,57 @@ class ReaderPresenter(
         }
     }
 
-    /**
-     * Called when a chapter changed from [fromChapter] to [toChapter]. It updates [fromChapter]
-     * on the database.
-     */
-    private fun onChapterChanged(fromChapter: ReaderChapter) {
-        saveChapterProgress(fromChapter)
-        saveChapterHistory(fromChapter)
+    fun saveCurrentChapterReadingProgress() {
+        getCurrentChapter()?.let { saveReadingProgress(it) }
     }
 
     /**
-     * Saves this [chapter] progress (last read page and whether it's read).
+     * Called when reader chapter is changed in reader or when activity is paused.
+     */
+    private fun saveReadingProgress(readerChapter: ReaderChapter) {
+        launchIO {
+            saveChapterProgress(readerChapter)
+            saveChapterHistory(readerChapter)
+        }
+    }
+
+    /**
+     * Saves this [readerChapter] progress (last read page and whether it's read).
      * If incognito mode isn't on or has at least 1 tracker
      */
-    private fun saveChapterProgress(chapter: ReaderChapter) {
+    private suspend fun saveChapterProgress(readerChapter: ReaderChapter) {
         if (!incognitoMode || hasTrackers) {
-            db.updateChapterProgress(chapter.chapter).asRxCompletable()
-                .onErrorComplete()
-                .subscribeOn(Schedulers.io())
-                .subscribe()
+            val chapter = readerChapter.chapter
+            updateChapter.await(
+                ChapterUpdate(
+                    id = chapter.id!!,
+                    read = chapter.read,
+                    bookmark = chapter.bookmark,
+                    lastPageRead = chapter.last_page_read.toLong(),
+                ),
+            )
         }
     }
 
     /**
-     * Saves this [chapter] last read history if incognito mode isn't on.
+     * Saves this [readerChapter] last read history if incognito mode isn't on.
      */
-    private fun saveChapterHistory(chapter: ReaderChapter) {
+    private suspend fun saveChapterHistory(readerChapter: ReaderChapter) {
         if (!incognitoMode) {
-            val history = History.create(chapter.chapter).apply { last_read = Date().time }
-            db.updateHistoryLastRead(history).asRxCompletable()
-                .onErrorComplete()
-                .subscribeOn(Schedulers.io())
-                .subscribe()
+            val chapterId = readerChapter.chapter.id!!
+            val readAt = Date()
+            val sessionReadDuration = chapterReadStartTime?.let { readAt.time - it } ?: 0
+
+            upsertHistory.await(
+                HistoryUpdate(chapterId, readAt, sessionReadDuration),
+            ).also {
+                chapterReadStartTime = null
+            }
         }
+    }
+
+    fun setReadStartTime() {
+        chapterReadStartTime = Date().time
     }
 
     /**
@@ -575,20 +639,30 @@ class ReaderPresenter(
      * Bookmarks the currently active chapter.
      */
     fun bookmarkCurrentChapter(bookmarked: Boolean) {
-        if (getCurrentChapter()?.chapter == null) {
-            return
+        val chapter = getCurrentChapter()?.chapter ?: return
+        chapter.bookmark = bookmarked // Otherwise the bookmark icon doesn't update
+        launchIO {
+            updateChapter.await(
+                ChapterUpdate(
+                    id = chapter.id!!.toLong(),
+                    bookmark = bookmarked,
+                ),
+            )
         }
-
-        val chapter = getCurrentChapter()?.chapter!!
-        chapter.bookmark = bookmarked
-        db.updateChapterProgress(chapter).executeAsBlocking()
     }
 
     // SY -->
-    fun toggleBookmark(chapter: Chapter) {
-        chapter.bookmark = !chapter.bookmark
-        db.updateChapterProgress(chapter).executeAsBlocking()
-        chapterList.firstOrNull { it.chapter.id == chapter.id }?.let { it.chapter.bookmark == !chapter.bookmark }
+    fun toggleBookmark(chapterId: Long, bookmarked: Boolean) {
+        val chapter = chapterList.find { it.chapter.id == chapterId }?.chapter ?: return
+        chapter.bookmark = bookmarked
+        launchIO {
+            updateChapter.await(
+                ChapterUpdate(
+                    id = chapter.id!!.toLong(),
+                    bookmark = bookmarked,
+                ),
+            )
+        }
     }
     // SY <--
 
@@ -617,7 +691,9 @@ class ReaderPresenter(
     fun setMangaReadingMode(readingModeType: Int) {
         val manga = manga ?: return
         manga.readingModeType = readingModeType
-        db.updateViewerFlags(manga).executeAsBlocking()
+        runBlocking {
+            setMangaViewerFlags.awaitSetMangaReadingMode(manga.id!!.toLong(), readingModeType.toLong())
+        }
 
         Observable.timer(250, TimeUnit.MILLISECONDS, AndroidSchedulers.mainThread())
             .subscribeFirst({ view, _ ->
@@ -631,7 +707,7 @@ class ReaderPresenter(
                     view.setManga(manga)
                     view.setChapters(currChapters)
                 }
-            })
+            },)
     }
 
     /**
@@ -652,9 +728,11 @@ class ReaderPresenter(
     fun setMangaOrientationType(rotationType: Int) {
         val manga = manga ?: return
         manga.orientationType = rotationType
-        db.updateViewerFlags(manga).executeAsBlocking()
+        runBlocking {
+            setMangaViewerFlags.awaitSetOrientationType(manga.id!!.toLong(), rotationType.toLong())
+        }
 
-        Timber.i("Manga orientation is ${manga.orientationType}")
+        logcat(LogPriority.INFO) { "Manga orientation is ${manga.orientationType}" }
 
         Observable.timer(250, TimeUnit.MILLISECONDS, AndroidSchedulers.mainThread())
             .subscribeFirst({ view, _ ->
@@ -662,33 +740,21 @@ class ReaderPresenter(
                 if (currChapters != null) {
                     view.setOrientation(getMangaOrientationType())
                 }
-            })
+            },)
     }
 
     /**
-     * Saves the image of this [page] in the given [directory] and returns the file location.
+     * Generate a filename for the given [manga] and [page]
      */
-    private fun saveImage(page: ReaderPage, directory: File, manga: Manga): File {
-        val stream = page.stream!!
-        val type = ImageUtil.findImageType(stream) ?: throw Exception("Not an image")
-
-        directory.mkdirs()
-
+    private fun generateFilename(
+        manga: Manga,
+        page: ReaderPage,
+    ): String {
         val chapter = page.chapter.chapter
-
-        // Build destination file.
-        val filenameSuffix = " - ${page.number}.${type.extension}"
-        val filename = DiskUtil.buildValidFilename(
-            "${manga.title} - ${chapter.name}".takeBytes(MAX_FILE_NAME_BYTES - filenameSuffix.byteSize())
+        val filenameSuffix = " - ${page.number}"
+        return DiskUtil.buildValidFilename(
+            "${manga.title} - ${chapter.name}".takeBytes(MAX_FILE_NAME_BYTES - filenameSuffix.byteSize()),
         ) + filenameSuffix
-
-        val destFile = File(directory, filename)
-        stream().use { input ->
-            destFile.outputStream().use { output ->
-                input.copyTo(output)
-            }
-        }
-        return destFile
     }
 
     /**
@@ -698,32 +764,36 @@ class ReaderPresenter(
     fun saveImage(page: ReaderPage) {
         if (page.status != Page.READY) return
         val manga = manga ?: return
-        val context = Injekt.get<Application>()
 
+        val context = Injekt.get<Application>()
         val notifier = SaveImageNotifier(context)
         notifier.onClear()
 
+        val filename = generateFilename(manga, page)
+
         // Pictures directory.
-        val baseDir = getPicturesDir(context).absolutePath
-        val destDir = if (preferences.folderPerManga()) {
-            File(baseDir + File.separator + DiskUtil.buildValidFilename(manga.title))
-        } else {
-            File(baseDir)
-        }
+        val relativePath = if (preferences.folderPerManga()) DiskUtil.buildValidFilename(manga.title) else ""
 
         // Copy file in background.
-        Observable.fromCallable { saveImage(page, destDir, manga) }
-            .doOnNext { file ->
-                DiskUtil.scanMedia(context, file)
-                notifier.onComplete(file)
+        try {
+            presenterScope.launchIO {
+                val uri = imageSaver.save(
+                    image = Image.Page(
+                        inputStream = page.stream!!,
+                        name = filename,
+                        location = Location.Pictures.create(relativePath),
+                    ),
+                )
+                launchUI {
+                    DiskUtil.scanMedia(context, uri)
+                    notifier.onComplete(uri)
+                    view!!.onSaveImageResult(SaveImageResult.Success(uri))
+                }
             }
-            .doOnError { notifier.onError(it.message) }
-            .subscribeOn(Schedulers.io())
-            .observeOn(AndroidSchedulers.mainThread())
-            .subscribeFirst(
-                { view, file -> view.onSaveImageResult(SaveImageResult.Success(file)) },
-                { view, error -> view.onSaveImageResult(SaveImageResult.Error(error)) }
-            )
+        } catch (e: Throwable) {
+            notifier.onError(e.message)
+            view!!.onSaveImageResult(SaveImageResult.Error(e))
+        }
     }
 
     // SY -->
@@ -731,58 +801,66 @@ class ReaderPresenter(
         if (firstPage.status != Page.READY) return
         if (secondPage.status != Page.READY) return
         val manga = manga ?: return
-        val context = Injekt.get<Application>()
 
+        val context = Injekt.get<Application>()
         val notifier = SaveImageNotifier(context)
         notifier.onClear()
 
         // Pictures directory.
-        val destDir = getPicturesDir(context)
+        val relativePath = if (preferences.folderPerManga()) DiskUtil.buildValidFilename(manga.title) else ""
 
         // Copy file in background.
-        Observable.fromCallable { saveImages(firstPage, secondPage, isLTR, bg, destDir, manga) }
-            .doOnNext { file ->
-                DiskUtil.scanMedia(context, file)
-                notifier.onComplete(file)
+        try {
+            presenterScope.launchIO {
+                val uri = saveImages(
+                    page1 = firstPage,
+                    page2 = secondPage,
+                    isLTR = isLTR,
+                    bg = bg,
+                    location = Location.Pictures.create(relativePath),
+                    manga = manga,
+                )
+                launchUI {
+                    notifier.onComplete(uri)
+                    view!!.onSaveImageResult(SaveImageResult.Success(uri))
+                }
             }
-            .doOnError { notifier.onError(it.message) }
-            .subscribeOn(Schedulers.io())
-            .observeOn(AndroidSchedulers.mainThread())
-            .subscribeFirst(
-                { view, file -> view.onSaveImageResult(SaveImageResult.Success(file)) },
-                { view, error -> view.onSaveImageResult(SaveImageResult.Error(error)) }
-            )
+        } catch (e: Throwable) {
+            notifier.onError(e.message)
+            view!!.onSaveImageResult(SaveImageResult.Error(e))
+        }
     }
 
-    private fun saveImages(page1: ReaderPage, page2: ReaderPage, isLTR: Boolean, @ColorInt bg: Int, directory: File, manga: Manga): File {
+    private fun saveImages(
+        page1: ReaderPage,
+        page2: ReaderPage,
+        isLTR: Boolean,
+        @ColorInt bg: Int,
+        location: Location,
+        manga: Manga,
+    ): Uri {
         val stream1 = page1.stream!!
         ImageUtil.findImageType(stream1) ?: throw Exception("Not an image")
         val stream2 = page2.stream!!
         ImageUtil.findImageType(stream2) ?: throw Exception("Not an image")
-        val imageBytes = stream1().readBytes()
-        val imageBitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-
-        val imageBytes2 = stream2().readBytes()
-        val imageBitmap2 = BitmapFactory.decodeByteArray(imageBytes2, 0, imageBytes2.size)
-
-        val stream = ImageUtil.mergeBitmaps(imageBitmap, imageBitmap2, isLTR, bg)
-        directory.mkdirs()
+        val imageBitmap = ImageDecoder.newInstance(stream1())?.decode()!!
+        val imageBitmap2 = ImageDecoder.newInstance(stream2())?.decode()!!
 
         val chapter = page1.chapter.chapter
 
         // Build destination file.
         val filenameSuffix = " - ${page1.number}-${page2.number}.jpg"
         val filename = DiskUtil.buildValidFilename(
-            "${manga.title} - ${chapter.name}".takeBytes(MAX_FILE_NAME_BYTES - filenameSuffix.byteSize())
+            "${manga.title} - ${chapter.name}".takeBytes(MAX_FILE_NAME_BYTES - filenameSuffix.byteSize()),
         ) + filenameSuffix
 
-        val destFile = File(directory, filename)
-        stream.use { input ->
-            destFile.outputStream().use { output ->
-                input.copyTo(output)
-            }
-        }
-        return destFile
+        return imageSaver.save(
+            image = Image.Page(
+                inputStream = { ImageUtil.mergeBitmaps(imageBitmap, imageBitmap2, isLTR, bg) },
+                name = filename,
+                location = location,
+            ),
+        )
     }
     // SY <--
 
@@ -790,24 +868,35 @@ class ReaderPresenter(
      * Shares the image of this [page] and notifies the UI with the path of the file to share.
      * The image must be first copied to the internal partition because there are many possible
      * formats it can come from, like a zipped chapter, in which case it's not possible to directly
-     * get a path to the file and it has to be decompresssed somewhere first. Only the last shared
+     * get a path to the file and it has to be decompressed somewhere first. Only the last shared
      * image will be kept so it won't be taking lots of internal disk space.
      */
     fun shareImage(page: ReaderPage) {
         if (page.status != Page.READY) return
         val manga = manga ?: return
+
         val context = Injekt.get<Application>()
+        val destDir = context.cacheImageDir
 
-        val destDir = getTempShareDir(context)
+        val filename = generateFilename(manga, page)
 
-        Observable.fromCallable { destDir.deleteRecursively() } // Keep only the last shared file
-            .map { saveImage(page, destDir, manga) }
-            .subscribeOn(Schedulers.io())
-            .observeOn(AndroidSchedulers.mainThread())
-            .subscribeFirst(
-                { view, file -> view.onShareImageResult(file, page) },
-                { _, _ -> /* Empty */ }
-            )
+        try {
+            presenterScope.launchIO {
+                destDir.deleteRecursively()
+                val uri = imageSaver.save(
+                    image = Image.Page(
+                        inputStream = page.stream!!,
+                        name = filename,
+                        location = Location.Cache,
+                    ),
+                )
+                launchUI {
+                    view!!.onShareImageResult(uri, page)
+                }
+            }
+        } catch (e: Throwable) {
+            logcat(LogPriority.ERROR, e)
+        }
     }
 
     // SY -->
@@ -815,54 +904,56 @@ class ReaderPresenter(
         if (firstPage.status != Page.READY) return
         if (secondPage.status != Page.READY) return
         val manga = manga ?: return
+
         val context = Injekt.get<Application>()
+        val destDir = context.cacheImageDir
 
-        val destDir = getTempShareDir(context)
-
-        Observable.fromCallable { destDir.deleteRecursively() } // Keep only the last shared file
-            .map { saveImages(firstPage, secondPage, isLTR, bg, destDir, manga) }
-            .subscribeOn(Schedulers.io())
-            .observeOn(AndroidSchedulers.mainThread())
-            .subscribeFirst(
-                { view, file -> view.onShareImageResult(file, firstPage, secondPage) },
-                { _, _ -> /* Empty */ }
-            )
+        try {
+            presenterScope.launchIO {
+                destDir.deleteRecursively()
+                val uri = saveImages(
+                    page1 = firstPage,
+                    page2 = secondPage,
+                    isLTR = isLTR,
+                    bg = bg,
+                    location = Location.Cache,
+                    manga = manga,
+                )
+                launchUI {
+                    view!!.onShareImageResult(uri, firstPage, secondPage)
+                }
+            }
+        } catch (e: Throwable) {
+            logcat(LogPriority.ERROR, e)
+        }
     }
     // SY <--
 
     /**
      * Sets the image of this [page] as cover and notifies the UI of the result.
      */
-    fun setAsCover(page: ReaderPage) {
+    fun setAsCover(context: Context, page: ReaderPage) {
         if (page.status != Page.READY) return
-        val manga = manga ?: return
+        val manga = manga?.toDomainManga() ?: return
         val stream = page.stream ?: return
 
-        Observable
-            .fromCallable {
-                if (manga.isLocal()) {
-                    val context = Injekt.get<Application>()
-                    LocalSource.updateCover(context, manga, stream())
-                    manga.updateCoverLastModified(db)
-                    R.string.cover_updated
+        presenterScope.launchIO {
+            val result = try {
+                manga.editCover(context, stream())
+            } catch (e: Exception) {
+                false
+            }
+            launchUI {
+                val resultResult = if (!result) {
+                    SetAsCoverResult.Error
+                } else if (manga.isLocal() || manga.favorite) {
                     SetAsCoverResult.Success
                 } else {
-                    if (manga.favorite) {
-                        coverCache.setCustomCoverToCache(manga, stream())
-                        manga.updateCoverLastModified(db)
-                        coverCache.clearMemoryCache()
-                        SetAsCoverResult.Success
-                    } else {
-                        SetAsCoverResult.AddToLibraryFirst
-                    }
+                    SetAsCoverResult.AddToLibraryFirst
                 }
+                view?.onSetAsCoverResult(resultResult)
             }
-            .subscribeOn(Schedulers.io())
-            .observeOn(AndroidSchedulers.mainThread())
-            .subscribeFirst(
-                { view, result -> view.onSetAsCoverResult(result) },
-                { view, _ -> view.onSetAsCoverResult(SetAsCoverResult.Error) }
-            )
+        }
     }
 
     /**
@@ -876,7 +967,7 @@ class ReaderPresenter(
      * Results of the save image feature.
      */
     sealed class SaveImageResult {
-        class Success(val file: File) : SaveImageResult()
+        class Success(val uri: Uri) : SaveImageResult()
         class Error(val error: Throwable) : SaveImageResult()
     }
 
@@ -888,27 +979,27 @@ class ReaderPresenter(
         if (!preferences.autoUpdateTrack()) return
         val manga = manga ?: return
 
-        val chapterRead = readerChapter.chapter.chapter_number
+        val chapterRead = readerChapter.chapter.chapter_number.toDouble()
 
         val trackManager = Injekt.get<TrackManager>()
         val context = Injekt.get<Application>()
 
         launchIO {
-            db.getTracks(manga).executeAsBlocking()
+            getTracks.await(manga.id!!)
                 .mapNotNull { track ->
-                    val service = trackManager.getService(track.sync_id)
-                    if (service != null && service.isLogged && chapterRead > track.last_chapter_read /* SY --> */ && ((service.id == TrackManager.MDLIST && track.status != FollowStatus.UNFOLLOWED.int) || service.id != TrackManager.MDLIST)/* SY <-- */) {
-                        track.last_chapter_read = chapterRead
+                    val service = trackManager.getService(track.syncId)
+                    if (service != null && service.isLogged && chapterRead > track.lastChapterRead /* SY --> */ && ((service.id == TrackManager.MDLIST && track.status != FollowStatus.UNFOLLOWED.int.toLong()) || service.id != TrackManager.MDLIST)/* SY <-- */) {
+                        val updatedTrack = track.copy(lastChapterRead = chapterRead)
 
                         // We want these to execute even if the presenter is destroyed and leaks
                         // for a while. The view can still be garbage collected.
                         async {
                             runCatching {
                                 if (context.isOnline()) {
-                                    service.update(track, true)
-                                    db.insertTrack(track).executeAsBlocking()
+                                    service.update(updatedTrack.toDbTrack(), true)
+                                    insertTrack.await(updatedTrack)
                                 } else {
-                                    delayedTrackingStore.addItem(track)
+                                    delayedTrackingStore.addItem(updatedTrack)
                                     DelayedTrackingUpdateJob.setupTask(context)
                                 }
                             }
@@ -919,7 +1010,7 @@ class ReaderPresenter(
                 }
                 .awaitAll()
                 .mapNotNull { it.exceptionOrNull() }
-                .forEach { Timber.w(it) }
+                .forEach { logcat(LogPriority.INFO, it) }
         }
     }
 
@@ -933,12 +1024,12 @@ class ReaderPresenter(
         val manga = if (mergedManga.isNullOrEmpty()) {
             manga
         } else {
-            mergedManga.orEmpty()[chapter.chapter.manga_id]
+            mergedManga.orEmpty()[chapter.chapter.manga_id]?.toDbManga()
         } ?: return
         // SY <--
 
         launchIO {
-            downloadManager.enqueueDeleteChapters(listOf(chapter.chapter), manga)
+            downloadManager.enqueueDeleteChapters(listOf(chapter.chapter), manga.toDomainManga()!!)
         }
     }
 

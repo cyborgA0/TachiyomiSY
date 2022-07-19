@@ -13,35 +13,36 @@ import androidx.core.graphics.ColorUtils
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat
-import com.bluelinelabs.conductor.changehandler.FadeChangeHandler
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dev.chrisbanes.insetter.applyInsetter
+import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
+import eu.kanade.domain.manga.interactor.GetManga
+import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.domain.manga.model.Manga
+import eu.kanade.domain.manga.model.toDbManga
+import eu.kanade.domain.manga.model.toMangaInfo
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
-import eu.kanade.tachiyomi.data.database.models.Manga
-import eu.kanade.tachiyomi.data.database.models.toMangaInfo
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.databinding.MigrationListControllerBinding
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.source.model.toSChapter
-import eu.kanade.tachiyomi.source.model.toSManga
 import eu.kanade.tachiyomi.source.online.all.EHentai
+import eu.kanade.tachiyomi.ui.base.changehandler.OneWayFadeChangeHandler
 import eu.kanade.tachiyomi.ui.base.controller.BaseController
+import eu.kanade.tachiyomi.ui.base.controller.pushController
 import eu.kanade.tachiyomi.ui.base.controller.withFadeTransaction
 import eu.kanade.tachiyomi.ui.browse.migration.MigrationMangaDialog
 import eu.kanade.tachiyomi.ui.browse.migration.advanced.design.PreMigrationController
 import eu.kanade.tachiyomi.ui.browse.migration.search.SearchController
 import eu.kanade.tachiyomi.ui.manga.MangaController
-import eu.kanade.tachiyomi.util.chapter.syncChaptersWithSource
 import eu.kanade.tachiyomi.util.lang.launchUI
-import eu.kanade.tachiyomi.util.lang.withIOContext
 import eu.kanade.tachiyomi.util.system.getResourceColor
+import eu.kanade.tachiyomi.util.system.logcat
 import eu.kanade.tachiyomi.util.system.toast
 import exh.eh.EHentaiThrottleManager
 import exh.smartsearch.SmartSearchEngine
-import exh.util.executeOnIO
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,7 +53,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import timber.log.Timber
+import logcat.LogPriority
 import uy.kohesive.injekt.injectLazy
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -68,11 +69,13 @@ class MigrationListController(bundle: Bundle? = null) :
 
     val config: MigrationProcedureConfig? = args.getParcelable(CONFIG_EXTRA)
 
-    private val db: DatabaseHelper by injectLazy()
     private val preferences: PreferencesHelper by injectLazy()
     private val sourceManager: SourceManager by injectLazy()
 
     private val smartSearchEngine = SmartSearchEngine(config?.extraSearchParams)
+    private val syncChaptersWithSource: SyncChaptersWithSource by injectLazy()
+    private val getManga: GetManga by injectLazy()
+    private val updateManga: UpdateManga by injectLazy()
 
     private val migrationScope = CoroutineScope(Job() + Dispatchers.IO)
     var migrationsJob: Job? = null
@@ -105,7 +108,7 @@ class MigrationListController(bundle: Bundle? = null) :
 
         val newMigratingManga = migratingManga ?: run {
             val new = config.mangaIds.map {
-                MigratingManga(db, sourceManager, it, migrationScope.coroutineContext)
+                MigratingManga(getManga, sourceManager, it, migrationScope.coroutineContext)
             }
             migratingManga = new.toMutableList()
             new
@@ -170,15 +173,15 @@ class MigrationListController(bundle: Bundle? = null) :
                                     sourceSemaphore.withPermit {
                                         try {
                                             val searchResult = if (useSmartSearch) {
-                                                smartSearchEngine.smartSearch(source, mangaObj.originalTitle)
+                                                smartSearchEngine.smartSearch(source, mangaObj.ogTitle)
                                             } else {
-                                                smartSearchEngine.normalSearch(source, mangaObj.originalTitle)
+                                                smartSearchEngine.normalSearch(source, mangaObj.ogTitle)
                                             }
 
                                             if (searchResult != null && !(searchResult.url == mangaObj.url && source.id == mangaObj.source)) {
                                                 val localManga = smartSearchEngine.networkToLocalManga(
                                                     searchResult,
-                                                    source.id
+                                                    source.id,
                                                 )
 
                                                 val chapters = if (source is EHentai) {
@@ -188,7 +191,7 @@ class MigrationListController(bundle: Bundle? = null) :
                                                 }
 
                                                 try {
-                                                    syncChaptersWithSource(db, chapters.map { it.toSChapter() }, localManga, source)
+                                                    syncChaptersWithSource.await(chapters.map { it.toSChapter() }, localManga, source)
                                                 } catch (e: Exception) {
                                                     return@async2 null
                                                 }
@@ -210,9 +213,9 @@ class MigrationListController(bundle: Bundle? = null) :
                             validSources.forEachIndexed { index, source ->
                                 val searchResult = try {
                                     val searchResult = if (useSmartSearch) {
-                                        smartSearchEngine.smartSearch(source, mangaObj.originalTitle)
+                                        smartSearchEngine.smartSearch(source, mangaObj.ogTitle)
                                     } else {
-                                        smartSearchEngine.normalSearch(source, mangaObj.originalTitle)
+                                        smartSearchEngine.normalSearch(source, mangaObj.ogTitle)
                                     }
 
                                     if (searchResult != null) {
@@ -224,12 +227,10 @@ class MigrationListController(bundle: Bundle? = null) :
                                                 source.getChapterList(localManga.toMangaInfo())
                                             }.map { it.toSChapter() }
                                         } catch (e: Exception) {
-                                            Timber.e(e)
+                                            this@MigrationListController.logcat(LogPriority.ERROR, e)
                                             emptyList()
                                         }
-                                        withIOContext {
-                                            syncChaptersWithSource(db, chapters, localManga, source)
-                                        }
+                                        syncChaptersWithSource.await(chapters, localManga, source)
                                         localManga
                                     } else null
                                 } catch (e: CancellationException) {
@@ -250,12 +251,10 @@ class MigrationListController(bundle: Bundle? = null) :
                     continue
                 }
 
-                if (result != null && result.thumbnail_url == null) {
+                if (result != null && result.thumbnailUrl == null) {
                     try {
                         val newManga = sourceManager.getOrStub(result.source).getMangaDetails(result.toMangaInfo())
-                        result.copyFrom(newManga.toSManga())
-
-                        db.insertManga(result).executeOnIO()
+                        updateManga.awaitUpdateFromSource(result, newManga, true)
                     } catch (e: CancellationException) {
                         // Ignore cancellations
                         throw e
@@ -308,8 +307,8 @@ class MigrationListController(bundle: Bundle? = null) :
                     res.getQuantityString(
                         R.plurals.manga_migrated,
                         manualMigrations,
-                        manualMigrations
-                    )
+                        manualMigrations,
+                    ),
                 )
             }
             if (adapter?.hideNotFound == false) {
@@ -335,7 +334,7 @@ class MigrationListController(bundle: Bundle? = null) :
                     }
                     val searchController = SearchController(manga, validSources)
                     searchController.targetController = this@MigrationListController
-                    router.pushController(searchController.withFadeTransaction())
+                    router.pushController(searchController)
                 }
             }
             R.id.action_skip -> adapter?.removeManga(position)
@@ -357,11 +356,11 @@ class MigrationListController(bundle: Bundle? = null) :
         adapter?.notifyItemChanged(firstIndex)
         launchUI {
             val result = CoroutineScope(migratingManga.manga.migrationJob).async {
-                val localManga = smartSearchEngine.networkToLocalManga(manga, source.id)
+                val localManga = smartSearchEngine.networkToLocalManga(manga.toDbManga(), source.id)
                 try {
                     val chapters = source.getChapterList(localManga.toMangaInfo())
                         .map { it.toSChapter() }
-                    syncChaptersWithSource(db, chapters, localManga, source)
+                    syncChaptersWithSource.await(chapters, localManga, source)
                 } catch (e: Exception) {
                     return@async null
                 }
@@ -371,9 +370,7 @@ class MigrationListController(bundle: Bundle? = null) :
             if (result != null) {
                 try {
                     val newManga = sourceManager.getOrStub(result.source).getMangaDetails(result.toMangaInfo())
-                    result.copyFrom(newManga.toSManga())
-
-                    db.insertManga(result).executeOnIO()
+                    updateManga.awaitUpdateFromSource(result, newManga, true)
                 } catch (e: CancellationException) {
                     // Ignore cancellations
                     throw e
@@ -411,15 +408,15 @@ class MigrationListController(bundle: Bundle? = null) :
                 val hasDetails = router.backstack.any { it.controller is MangaController }
                 if (hasDetails) {
                     val manga = migratingManga?.firstOrNull()?.searchResult?.get()?.let {
-                        db.getManga(it).executeOnIO()
+                        getManga.await(it)
                     }
                     if (manga != null) {
                         val newStack = router.backstack.filter {
                             it.controller !is MangaController &&
                                 it.controller !is MigrationListController &&
                                 it.controller !is PreMigrationController
-                        } + MangaController(manga).withFadeTransaction()
-                        router.setBackstack(newStack, FadeChangeHandler())
+                        } + MangaController(manga.id).withFadeTransaction()
+                        router.setBackstack(newStack, OneWayFadeChangeHandler())
                         return@launchUI
                     }
                 }
@@ -458,11 +455,11 @@ class MigrationListController(bundle: Bundle? = null) :
             menuMigrate.icon = VectorDrawableCompat.create(
                 resources!!,
                 R.drawable.ic_done_24dp,
-                null
+                null,
             )
         }
 
-        val tintColor = activity?.getResourceColor(R.attr.colorOnToolbar) ?: Color.WHITE
+        val tintColor = activity?.getResourceColor(R.attr.colorOnSurface) ?: Color.WHITE
         val color = if (allMangasDone) {
             tintColor
         } else {
@@ -473,8 +470,8 @@ class MigrationListController(bundle: Bundle? = null) :
     }
 
     private fun MenuItem.setIconTint(enabled: Boolean, color: Int) {
-        icon.mutate()
-        icon.setTint(color)
+        icon?.mutate()
+        icon?.setTint(color)
         isEnabled = enabled
     }
 
@@ -486,13 +483,13 @@ class MigrationListController(bundle: Bundle? = null) :
                 this,
                 true,
                 totalManga,
-                mangaSkipped
+                mangaSkipped,
             ).showDialog(router)
             R.id.action_migrate_manga -> MigrationMangaDialog(
                 this,
                 false,
                 totalManga,
-                mangaSkipped
+                mangaSkipped,
             ).showDialog(router)
             else -> return super.onOptionsItemSelected(item)
         }
@@ -523,8 +520,8 @@ class MigrationListController(bundle: Bundle? = null) :
         fun create(config: MigrationProcedureConfig): MigrationListController {
             return MigrationListController(
                 bundleOf(
-                    CONFIG_EXTRA to config
-                )
+                    CONFIG_EXTRA to config,
+                ),
             )
         }
     }

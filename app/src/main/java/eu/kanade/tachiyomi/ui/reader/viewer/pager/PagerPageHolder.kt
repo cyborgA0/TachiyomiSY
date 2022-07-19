@@ -2,16 +2,11 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.BitmapFactory
 import android.view.Gravity
-import android.view.ViewGroup
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-import android.widget.LinearLayout
-import android.widget.TextView
+import android.view.LayoutInflater
 import androidx.core.view.isVisible
-import androidx.core.view.setMargins
 import androidx.core.view.updateLayoutParams
-import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.databinding.ReaderErrorBinding
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -20,16 +15,16 @@ import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.lang.launchUI
 import eu.kanade.tachiyomi.util.system.ImageUtil
-import eu.kanade.tachiyomi.util.system.dpToPx
+import eu.kanade.tachiyomi.util.system.logcat
 import eu.kanade.tachiyomi.widget.ViewPagerAdapter
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import logcat.LogPriority
 import rx.Observable
 import rx.Subscription
 import rx.android.schedulers.AndroidSchedulers
 import rx.schedulers.Schedulers
-import timber.log.Timber
+import tachiyomi.decoder.ImageDecoder
+import java.io.BufferedInputStream
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.util.concurrent.TimeUnit
@@ -43,7 +38,7 @@ class PagerPageHolder(
     readerThemedContext: Context,
     val viewer: PagerViewer,
     val page: ReaderPage,
-    private var extraPage: ReaderPage? = null
+    private var extraPage: ReaderPage? = null,
 ) : ReaderPageImageView(readerThemedContext), ViewPagerAdapter.PositionableView {
 
     /**
@@ -62,14 +57,9 @@ class PagerPageHolder(
     }
 
     /**
-     * Retry button used to allow retrying.
+     * Error layout to show when the image fails to load.
      */
-    private var retryButton: PagerButton? = null
-
-    /**
-     * Error layout to show when the image fails to decode.
-     */
-    private var decodeErrorLayout: ViewGroup? = null
+    private var errorLayout: ReaderErrorBinding? = null
 
     /**
      * Subscription for status changes of the page.
@@ -102,13 +92,10 @@ class PagerPageHolder(
     var extraStatus: Int = 0
     var progress: Int = 0
     var extraProgress: Int = 0
-    private var skipExtra = false
-    var scope: CoroutineScope? = null
     // SY <--
 
     init {
         addView(progressIndicator)
-        scope = CoroutineScope(Job() + Dispatchers.Default)
         observeStatus()
     }
 
@@ -262,8 +249,7 @@ class PagerPageHolder(
      */
     private fun setQueued() {
         progressIndicator.show()
-        retryButton?.isVisible = false
-        decodeErrorLayout?.isVisible = false
+        errorLayout?.root?.isVisible = false
     }
 
     /**
@@ -271,8 +257,7 @@ class PagerPageHolder(
      */
     private fun setLoading() {
         progressIndicator.show()
-        retryButton?.isVisible = false
-        decodeErrorLayout?.isVisible = false
+        errorLayout?.root?.isVisible = false
     }
 
     /**
@@ -280,8 +265,7 @@ class PagerPageHolder(
      */
     private fun setDownloading() {
         progressIndicator.show()
-        retryButton?.isVisible = false
-        decodeErrorLayout?.isVisible = false
+        errorLayout?.root?.isVisible = false
     }
 
     /**
@@ -289,12 +273,11 @@ class PagerPageHolder(
      */
     private fun setImage() {
         if (extraPage == null) {
-            progressIndicator.hide()
+            progressIndicator.setProgress(0)
         } else {
             progressIndicator.setProgress(95)
         }
-        retryButton?.isVisible = false
-        decodeErrorLayout?.isVisible = false
+        errorLayout?.root?.isVisible = false
 
         unsubscribeReadImageHeader()
         val streamFn = page.stream ?: return
@@ -338,18 +321,19 @@ class PagerPageHolder(
                             zoomDuration = viewer.config.doubleTapAnimDuration,
                             minimumScaleType = viewer.config.imageScaleType,
                             cropBorders = viewer.config.imageCropBorders,
-                            zoomStartPosition = viewer.config.imageZoomType
-                        )
+                            zoomStartPosition = viewer.config.imageZoomType,
+                            landscapeZoom = viewer.config.landscapeZoom,
+                        ),
                     )
                     if (!isAnimated) {
-                        this.background = background
+                        pageBackground = background
                     }
                 }
             }
             .subscribe({}, {})
     }
 
-    private fun process(page: ReaderPage, imageStream: InputStream): InputStream {
+    private fun process(page: ReaderPage, imageStream: BufferedInputStream): InputStream {
         if (!viewer.config.dualPageSplit) {
             return imageStream
         }
@@ -358,7 +342,7 @@ class PagerPageHolder(
             return splitInHalf(imageStream)
         }
 
-        val isDoublePage = ImageUtil.isDoublePage(imageStream)
+        val isDoublePage = ImageUtil.isWideImage(imageStream)
         if (!isDoublePage) {
             return imageStream
         }
@@ -371,28 +355,32 @@ class PagerPageHolder(
     private fun mergePages(imageStream: InputStream, imageStream2: InputStream?): InputStream {
         imageStream2 ?: return imageStream
         if (page.fullPage) return imageStream
-        if (ImageUtil.findImageType(imageStream) == ImageUtil.ImageType.GIF) {
+        if (ImageUtil.isAnimatedAndSupported(imageStream)) {
             page.fullPage = true
-            skipExtra = true
+            splitDoublePages()
             return imageStream
-        } else if (ImageUtil.findImageType(imageStream2) == ImageUtil.ImageType.GIF) {
+        } else if (ImageUtil.isAnimatedAndSupported(imageStream2)) {
             page.isolatedPage = true
             extraPage?.fullPage = true
-            skipExtra = true
+            splitDoublePages()
             return imageStream
         }
         val imageBytes = imageStream.readBytes()
         val imageBitmap = try {
-            BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+            ImageDecoder.newInstance(imageBytes.inputStream())?.decode()
         } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Cannot combine pages" }
+            null
+        }
+        if (imageBitmap == null) {
             imageStream2.close()
             imageStream.close()
             page.fullPage = true
-            skipExtra = true
-            Timber.e("Cannot combine pages ${e.message}")
+            splitDoublePages()
+            logcat(LogPriority.ERROR) { "Cannot combine pages" }
             return imageBytes.inputStream()
         }
-        scope?.launchUI { progressIndicator.setProgress(96) }
+        viewer.scope.launchUI { progressIndicator.setProgress(96) }
         val height = imageBitmap.height
         val width = imageBitmap.width
 
@@ -400,23 +388,27 @@ class PagerPageHolder(
             imageStream2.close()
             imageStream.close()
             page.fullPage = true
-            skipExtra = true
+            splitDoublePages()
             return imageBytes.inputStream()
         }
 
         val imageBytes2 = imageStream2.readBytes()
         val imageBitmap2 = try {
-            BitmapFactory.decodeByteArray(imageBytes2, 0, imageBytes2.size)
+            ImageDecoder.newInstance(imageBytes2.inputStream())?.decode()
         } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Cannot combine pages" }
+            null
+        }
+        if (imageBitmap2 == null) {
             imageStream2.close()
             imageStream.close()
             extraPage?.fullPage = true
-            skipExtra = true
             page.isolatedPage = true
-            Timber.e("Cannot combine pages ${e.message}")
+            splitDoublePages()
+            logcat(LogPriority.ERROR) { "Cannot combine pages" }
             return imageBytes.inputStream()
         }
-        scope?.launchUI { progressIndicator.setProgress(97) }
+        viewer.scope.launchUI { progressIndicator.setProgress(97) }
         val height2 = imageBitmap2.height
         val width2 = imageBitmap2.width
 
@@ -425,20 +417,30 @@ class PagerPageHolder(
             imageStream.close()
             extraPage?.fullPage = true
             page.isolatedPage = true
-            skipExtra = true
+            splitDoublePages()
             return imageBytes.inputStream()
         }
-        val isLTR = (viewer !is R2LPagerViewer).xor(viewer.config.invertDoublePages)
+        val isLTR = (viewer !is R2LPagerViewer) xor viewer.config.invertDoublePages
 
         imageStream.close()
         imageStream2.close()
         return ImageUtil.mergeBitmaps(imageBitmap, imageBitmap2, isLTR, viewer.config.pageCanvasColor) {
-            scope?.launchUI {
+            viewer.scope.launchUI {
                 if (it == 100) {
                     progressIndicator.hide()
                 } else {
                     progressIndicator.setProgress(it)
                 }
+            }
+        }
+    }
+
+    private fun splitDoublePages() {
+        viewer.scope.launchUI {
+            delay(100)
+            viewer.splitDoublePages(page)
+            if (extraPage?.fullPage == true || page.fullPage) {
+                extraPage = null
             }
         }
     }
@@ -472,7 +474,12 @@ class PagerPageHolder(
      */
     private fun setError() {
         progressIndicator.hide()
-        initRetryButton().isVisible = true
+        showErrorLayout(withOpenInWebView = false)
+    }
+
+    override fun onImageLoaded() {
+        super.onImageLoaded()
+        progressIndicator.hide()
     }
 
     /**
@@ -481,7 +488,7 @@ class PagerPageHolder(
     override fun onImageLoadError() {
         super.onImageLoadError()
         progressIndicator.hide()
-        initDecodeErrorLayout().isVisible = true
+        showErrorLayout(withOpenInWebView = true)
     }
 
     /**
@@ -492,78 +499,24 @@ class PagerPageHolder(
         viewer.activity.hideMenu()
     }
 
-    /**
-     * Initializes a button to retry pages.
-     */
-    private fun initRetryButton(): PagerButton {
-        if (retryButton != null) return retryButton!!
-
-        retryButton = PagerButton(context, viewer).apply {
-            layoutParams = LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER
-            }
-            setText(R.string.action_retry)
-            setOnClickListener {
+    private fun showErrorLayout(withOpenInWebView: Boolean): ReaderErrorBinding {
+        if (errorLayout == null) {
+            errorLayout = ReaderErrorBinding.inflate(LayoutInflater.from(context), this, true)
+            errorLayout?.actionRetry?.viewer = viewer
+            errorLayout?.actionRetry?.setOnClickListener {
                 page.chapter.pageLoader?.retryPage(page)
             }
-        }
-        addView(retryButton)
-        return retryButton!!
-    }
-
-    /**
-     * Initializes a decode error layout.
-     */
-    private fun initDecodeErrorLayout(): ViewGroup {
-        if (decodeErrorLayout != null) return decodeErrorLayout!!
-
-        val margins = 8.dpToPx
-
-        val decodeLayout = LinearLayout(context).apply {
-            gravity = Gravity.CENTER
-            orientation = LinearLayout.VERTICAL
-        }
-        decodeErrorLayout = decodeLayout
-
-        TextView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                setMargins(margins)
-            }
-            gravity = Gravity.CENTER
-            setText(R.string.decode_image_error)
-
-            decodeLayout.addView(this)
-        }
-
-        PagerButton(context, viewer).apply {
-            layoutParams = LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                setMargins(margins)
-            }
-            setText(R.string.action_retry)
-            setOnClickListener {
-                page.chapter.pageLoader?.retryPage(page)
-            }
-
-            decodeLayout.addView(this)
-        }
-
-        val imageUrl = page.imageUrl
-        if (imageUrl.orEmpty().startsWith("http", true)) {
-            PagerButton(context, viewer).apply {
-                layoutParams = LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                    setMargins(margins)
-                }
-                setText(R.string.action_open_in_web_view)
-                setOnClickListener {
+            val imageUrl = page.imageUrl
+            if (imageUrl.orEmpty().startsWith("http", true)) {
+                errorLayout?.actionOpenInWebView?.viewer = viewer
+                errorLayout?.actionOpenInWebView?.setOnClickListener {
                     val intent = WebViewActivity.newIntent(context, imageUrl!!)
                     context.startActivity(intent)
                 }
-
-                decodeLayout.addView(this)
             }
         }
-
-        addView(decodeLayout)
-        return decodeLayout
+        errorLayout?.actionOpenInWebView?.isVisible = withOpenInWebView
+        errorLayout?.root?.isVisible = true
+        return errorLayout!!
     }
 }

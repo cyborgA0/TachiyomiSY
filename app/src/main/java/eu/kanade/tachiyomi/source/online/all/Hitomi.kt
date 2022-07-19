@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.source.online.all
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import androidx.compose.runtime.Composable
 import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.toSManga
@@ -10,13 +11,13 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.NamespaceSource
 import eu.kanade.tachiyomi.source.online.UrlImportableSource
-import eu.kanade.tachiyomi.ui.manga.MangaController
+import eu.kanade.tachiyomi.ui.manga.MangaScreenState
 import eu.kanade.tachiyomi.util.asJsoup
 import exh.metadata.metadata.HitomiSearchMetadata
 import exh.metadata.metadata.base.RaisedSearchMetadata
 import exh.metadata.metadata.base.RaisedTag
 import exh.source.DelegatedHttpSource
-import exh.ui.metadata.adapters.HitomiDescriptionAdapter
+import exh.ui.metadata.adapters.HitomiDescription
 import exh.util.urlImportFetchSearchManga
 import org.jsoup.nodes.Document
 import tachiyomi.source.model.MangaInfo
@@ -29,7 +30,7 @@ class Hitomi(delegate: HttpSource, val context: Context) :
     UrlImportableSource,
     NamespaceSource {
     override val metaClass = HitomiSearchMetadata::class
-    override val lang = if (id == otherId) "all" else delegate.lang
+    override val lang = delegate.lang
 
     // Support direct URL importing
     override fun fetchSearchManga(page: Int, query: String, filters: FilterList) =
@@ -68,7 +69,7 @@ class Hitomi(delegate: HttpSource, val context: Context) :
                                 HitomiSearchMetadata.TAG_TYPE_DEFAULT
                             } else {
                                 RaisedSearchMetadata.TAG_TYPE_VIRTUAL
-                            }
+                            },
                         )
                     }
                     "type" -> {
@@ -93,7 +94,7 @@ class Hitomi(delegate: HttpSource, val context: Context) :
                             RaisedTag(
                                 "character",
                                 it,
-                                HitomiSearchMetadata.TAG_TYPE_DEFAULT
+                                HitomiSearchMetadata.TAG_TYPE_DEFAULT,
                             )
                         }
                     }
@@ -107,7 +108,7 @@ class Hitomi(delegate: HttpSource, val context: Context) :
                             RaisedTag(
                                 ns,
                                 it.text().dropLast(if (ns == "misc") 0 else 2),
-                                HitomiSearchMetadata.TAG_TYPE_DEFAULT
+                                HitomiSearchMetadata.TAG_TYPE_DEFAULT,
                             )
                         }
                     }
@@ -122,16 +123,8 @@ class Hitomi(delegate: HttpSource, val context: Context) :
         }
     }
 
-    override fun toString() = "$name (${lang.uppercase()})"
-
-    override fun ensureDelegateCompatible() {
-        if (versionId != delegate.versionId) {
-            throw IncompatibleDelegateException("Delegate source is not compatible (versionId: $versionId <=> ${delegate.versionId})!")
-        }
-    }
-
     override val matchingHosts = listOf(
-        "hitomi.la"
+        "hitomi.la",
     )
 
     override suspend fun mapUrlToMangaUrl(uri: Uri): String? {
@@ -144,8 +137,9 @@ class Hitomi(delegate: HttpSource, val context: Context) :
         return "https://hitomi.la/manga/${uri.pathSegments[1].substringBefore('.')}.html"
     }
 
-    override fun getDescriptionAdapter(controller: MangaController): HitomiDescriptionAdapter {
-        return HitomiDescriptionAdapter(controller)
+    @Composable
+    override fun DescriptionComposable(state: MangaScreenState.Success, openMetadataViewer: () -> Unit, search: (String) -> Unit) {
+        HitomiDescription(state, openMetadataViewer)
     }
 
     companion object {

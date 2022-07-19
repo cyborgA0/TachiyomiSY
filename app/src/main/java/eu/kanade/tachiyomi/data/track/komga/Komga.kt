@@ -10,10 +10,13 @@ import eu.kanade.tachiyomi.data.track.EnhancedTrackService
 import eu.kanade.tachiyomi.data.track.NoLoginTrackService
 import eu.kanade.tachiyomi.data.track.TrackService
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
+import eu.kanade.tachiyomi.source.Source
 import okhttp3.Dns
 import okhttp3.OkHttpClient
+import eu.kanade.domain.manga.model.Manga as DomainManga
+import eu.kanade.domain.track.model.Track as DomainTrack
 
-class Komga(private val context: Context, id: Int) : TrackService(id), EnhancedTrackService, NoLoginTrackService {
+class Komga(private val context: Context, id: Long) : TrackService(id), EnhancedTrackService, NoLoginTrackService {
 
     companion object {
         const val UNREAD = 1
@@ -40,7 +43,7 @@ class Komga(private val context: Context, id: Int) : TrackService(id), EnhancedT
     override fun getStatus(status: Int): String = with(context) {
         when (status) {
             UNREAD -> getString(R.string.unread)
-            READING -> getString(R.string.currently_reading)
+            READING -> getString(R.string.reading)
             COMPLETED -> getString(R.string.completed)
             else -> ""
         }
@@ -59,7 +62,11 @@ class Komga(private val context: Context, id: Int) : TrackService(id), EnhancedT
     override suspend fun update(track: Track, didReadChapter: Boolean): Track {
         if (track.status != COMPLETED) {
             if (didReadChapter) {
-                track.status = READING
+                if (track.last_chapter_read.toInt() == track.total_chapters && track.total_chapters > 0) {
+                    track.status = COMPLETED
+                } else {
+                    track.status = READING
+                }
             }
         }
 
@@ -97,6 +104,16 @@ class Komga(private val context: Context, id: Int) : TrackService(id), EnhancedT
         try {
             api.getTrackSearch(manga.url)
         } catch (e: Exception) {
+            null
+        }
+
+    override fun isTrackFrom(track: DomainTrack, manga: DomainManga, source: Source?): Boolean =
+        track.remoteUrl == manga.url && source?.let { accept(it) } == true
+
+    override fun migrateTrack(track: DomainTrack, manga: DomainManga, newSource: Source): DomainTrack? =
+        if (accept(newSource)) {
+            track.copy(remoteUrl = manga.url)
+        } else {
             null
         }
 }

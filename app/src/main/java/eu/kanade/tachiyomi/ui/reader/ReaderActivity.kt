@@ -2,19 +2,13 @@ package eu.kanade.tachiyomi.ui.reader
 
 import android.annotation.SuppressLint
 import android.annotation.TargetApi
-import android.app.ActionBar
 import android.app.ProgressDialog
-import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.content.res.Configuration
-import android.graphics.Bitmap
-import android.graphics.Color
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
-import android.graphics.PorterDuff
+import android.graphics.*
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -22,40 +16,44 @@ import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MotionEvent
+import android.view.View
 import android.view.View.LAYER_TYPE_HARDWARE
+import android.view.Window
 import android.view.WindowManager
 import android.view.animation.Animation
 import android.view.animation.AnimationUtils
 import android.widget.FrameLayout
 import android.widget.RelativeLayout
-import android.widget.SeekBar
 import android.widget.Toast
 import androidx.annotation.ColorInt
 import androidx.core.graphics.ColorUtils
+import androidx.core.transition.doOnEnd
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.shape.MaterialShapeDrawable
+import com.google.android.material.slider.Slider
+import com.google.android.material.transition.platform.MaterialContainerTransform
+import com.google.android.material.transition.platform.MaterialContainerTransformSharedElementCallback
 import dev.chrisbanes.insetter.applyInsetter
+import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.models.Chapter
 import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
-import eu.kanade.tachiyomi.data.preference.PreferencesHelper
-import eu.kanade.tachiyomi.data.preference.toggle
 import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.base.activity.BaseRxActivity
-import eu.kanade.tachiyomi.ui.base.activity.BaseThemedActivity.Companion.applyAppTheme
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.manga.MangaController
 import eu.kanade.tachiyomi.ui.reader.ReaderPresenter.SetAsCoverResult.AddToLibraryFirst
@@ -78,53 +76,55 @@ import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.VerticalPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
-import eu.kanade.tachiyomi.util.storage.getUriCompat
+import eu.kanade.tachiyomi.util.preference.toggle
 import eu.kanade.tachiyomi.util.system.applySystemAnimatorScale
 import eu.kanade.tachiyomi.util.system.createReaderThemeContext
 import eu.kanade.tachiyomi.util.system.getThemeColor
 import eu.kanade.tachiyomi.util.system.hasDisplayCutout
 import eu.kanade.tachiyomi.util.system.isLTR
 import eu.kanade.tachiyomi.util.system.isNightMode
+import eu.kanade.tachiyomi.util.system.logcat
+import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.popupMenu
 import eu.kanade.tachiyomi.util.view.setTooltip
 import eu.kanade.tachiyomi.widget.listener.SimpleAnimationListener
-import eu.kanade.tachiyomi.widget.listener.SimpleSeekBarListener
 import exh.log.xLogE
 import exh.source.isEhBasedSource
 import exh.util.defaultReaderType
+import exh.util.floor
 import exh.util.mangaType
-import exh.util.seconds
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.sample
-import kotlinx.coroutines.launch
+import logcat.LogPriority
 import nucleus.factory.RequiresPresenter
 import reactivecircus.flowbinding.android.view.clicks
 import reactivecircus.flowbinding.android.widget.checkedChanges
 import reactivecircus.flowbinding.android.widget.textChanges
-import timber.log.Timber
 import uy.kohesive.injekt.injectLazy
-import java.io.File
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.time.Duration.Companion.seconds
+
 /**
  * Activity containing the reader of Tachiyomi. This activity is mostly a container of the
  * viewers, to which calls from the presenter or UI events are delegated.
  */
 @RequiresPresenter(ReaderPresenter::class)
-class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() {
+class ReaderActivity : BaseRxActivity<ReaderPresenter>() {
 
     companion object {
-        fun newIntent(context: Context, manga: Manga, chapter: Chapter): Intent {
+
+        fun newIntent(context: Context, mangaId: Long?, chapterId: Long?): Intent {
             return Intent(context, ReaderActivity::class.java).apply {
-                putExtra("manga", manga.id)
-                putExtra("chapter", chapter.id)
+                putExtra("manga", mangaId)
+                putExtra("chapter", chapterId)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
         }
@@ -135,9 +135,12 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
 
         private const val ENABLED_BUTTON_IMAGE_ALPHA = 255
         private const val DISABLED_BUTTON_IMAGE_ALPHA = 64
+
+        const val EXTRA_IS_TRANSITION = "${BuildConfig.APPLICATION_ID}.READER_IS_TRANSITION"
+        const val SHARED_ELEMENT_NAME = "reader_shared_element_root"
     }
 
-    private val preferences: PreferencesHelper by injectLazy()
+    lateinit var binding: ReaderActivityBinding
 
     val hasCutout by lazy { hasDisplayCutout() }
 
@@ -156,8 +159,6 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
     // SY -->
     private var ehUtilsVisible = false
 
-    private val autoScrollFlow = MutableSharedFlow<Unit>()
-    private var autoScrollJob: Job? = null
     private val sourceManager: SourceManager by injectLazy()
 
     private var lastShiftDoubleState: Boolean? = null
@@ -191,7 +192,22 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
      * Called when the activity is created. Initializes the presenter and configuration.
      */
     override fun onCreate(savedInstanceState: Bundle?) {
-        applyAppTheme(preferences)
+        registerSecureActivity(this)
+
+        // Setup shared element transitions
+        if (intent.extras?.getBoolean(EXTRA_IS_TRANSITION) == true) {
+            window.requestFeature(Window.FEATURE_ACTIVITY_TRANSITIONS)
+            findViewById<View>(android.R.id.content)?.let { contentView ->
+                contentView.transitionName = SHARED_ELEMENT_NAME
+                setEnterSharedElementCallback(MaterialContainerTransformSharedElementCallback())
+                window.sharedElementEnterTransition = buildContainerTransform(true)
+                window.sharedElementReturnTransition = buildContainerTransform(false)
+
+                // Postpone custom transition until manga ready
+                postponeEnterTransition()
+            }
+        }
+
         super.onCreate(savedInstanceState)
 
         binding = ReaderActivityBinding.inflate(layoutInflater)
@@ -240,19 +256,6 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
             binding.expandEhButton.setImageResource(R.drawable.ic_keyboard_arrow_down_white_32dp)
         }
     }
-
-    private fun setupAutoscroll(interval: Double) {
-        autoScrollJob?.cancel()
-        if (interval == -1.0) return
-
-        val duration = interval.seconds
-        autoScrollJob = lifecycleScope.launch(Dispatchers.IO) {
-            while (true) {
-                delay(duration)
-                autoScrollFlow.emit(Unit)
-            }
-        }
-    }
     // SY <--
 
     /**
@@ -267,11 +270,6 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         readingModeToast?.cancel()
         progressDialog?.dismiss()
         progressDialog = null
-        listeners = mutableListOf()
-        // SY -->
-        autoScrollJob?.cancel()
-        autoScrollJob = null
-        // SY <--
     }
 
     /**
@@ -301,12 +299,18 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         super.onSaveInstanceState(outState)
     }
 
+    override fun onPause() {
+        presenter.saveCurrentChapterReadingProgress()
+        super.onPause()
+    }
+
     /**
      * Set menu visibility again on activity resume to apply immersive mode again if needed.
      * Helps with rotations.
      */
     override fun onResume() {
         super.onResume()
+        presenter.setReadStartTime()
         setMenuVisibility(menuVisible, animate = false)
     }
 
@@ -389,6 +393,13 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         return handled || super.dispatchGenericMotionEvent(event)
     }
 
+    private fun buildContainerTransform(entering: Boolean): MaterialContainerTransform {
+        return MaterialContainerTransform(this, entering).apply {
+            duration = 350 // ms
+            addTarget(android.R.id.content)
+        }
+    }
+
     /**
      * Initializes the reader menu. It sets up click listeners and the initial visibility.
      */
@@ -417,34 +428,33 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                         action = MainActivity.SHORTCUT_MANGA
                         putExtra(MangaController.MANGA_EXTRA, id)
                         addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    }
+                    },
                 )
             }
         }
 
         // SY -->
         // Init listeners on bottom menu
-        val listener = object : SimpleSeekBarListener() {
-            override fun onStartTrackingTouch(seekBar: SeekBar) {
-                super.onStartTrackingTouch(seekBar)
+        val listener = object : Slider.OnSliderTouchListener {
+            override fun onStartTrackingTouch(slider: Slider) {
                 isScrollingThroughPages = true
             }
 
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
-                super.onStopTrackingTouch(seekBar)
+            override fun onStopTrackingTouch(slider: Slider) {
                 isScrollingThroughPages = false
             }
-
-            override fun onProgressChanged(seekBar: SeekBar, value: Int, fromUser: Boolean) {
-                if (viewer != null && fromUser) {
-                    moveToPageIndex(value)
-                    binding.pageSeekbar.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                }
+        }
+        val onChangeListener = Slider.OnChangeListener { slider, value, fromUser ->
+            if (viewer != null && fromUser) {
+                isScrollingThroughPages = true
+                moveToPageIndex(value.toInt())
+                slider.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             }
         }
-        listOf(binding.pageSeekbar, binding.pageSeekbarVert)
+        listOf(binding.pageSlider, binding.pageSliderVert)
             .forEach {
-                it.setOnSeekBarChangeListener(listener)
+                it.addOnSliderTouchListener(listener)
+                it.addOnChangeListener(onChangeListener)
             }
         // SY <--
 
@@ -487,7 +497,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         // <-- EH
 
         val alpha = if (isNightMode()) 230 else 242 // 90% dark 95% light
-        val toolbarColor = ColorUtils.setAlphaComponent(getThemeColor(R.attr.colorToolbar), alpha)
+        val toolbarColor = ColorUtils.setAlphaComponent(getThemeColor(R.attr.colorSurface), alpha)
         listOf(
             binding.toolbarBottom,
             binding.leftChapter,
@@ -496,7 +506,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
             // SY -->
             binding.readerSeekbarVert,
             binding.aboveChapter,
-            binding.belowChapter
+            binding.belowChapter,
             // SY <--
         ).forEach {
             it.backgroundTintMode = PorterDuff.Mode.DST_IN
@@ -539,6 +549,8 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                     if (!preferences.showReadingMode()) {
                         menuToggleToast = toast(newReadingMode.stringRes)
                     }
+
+                    updateCropBordersShortcut()
                 }
             }
         }
@@ -570,7 +582,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                         R.string.on
                     } else {
                         R.string.off
-                    }
+                    },
                 )
             }
         }
@@ -672,35 +684,38 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                 } else {
                     it.toString()
                 }
-            }
+            },
         )
 
         binding.ehAutoscroll.checkedChanges()
-            .onEach {
-                setupAutoscroll(
-                    if (it) {
-                        preferences.autoscrollInterval().get().toDouble()
-                    } else {
-                        -1.0
-                    }
-                )
+            .combine(binding.ehAutoscrollFreq.textChanges()) { checked, text ->
+                checked to text
             }
-            .launchIn(lifecycleScope)
-
-        binding.ehAutoscrollFreq.textChanges()
-            .onEach {
-                val parsed = it.toString().toDoubleOrNull()
+            .mapLatest { (checked, text) ->
+                val parsed = text.toString().toDoubleOrNull()
 
                 if (parsed == null || parsed <= 0 || parsed > 9999) {
-                    binding.ehAutoscrollFreq.error = "Invalid frequency"
+                    binding.ehAutoscrollFreq.error = getString(R.string.eh_autoscroll_freq_invalid)
                     preferences.autoscrollInterval().set(-1f)
                     binding.ehAutoscroll.isEnabled = false
-                    setupAutoscroll(-1.0)
                 } else {
                     binding.ehAutoscrollFreq.error = null
                     preferences.autoscrollInterval().set(parsed.toFloat())
                     binding.ehAutoscroll.isEnabled = true
-                    setupAutoscroll(if (binding.ehAutoscroll.isChecked) parsed else -1.0)
+                    if (checked) {
+                        repeatOnLifecycle(Lifecycle.State.STARTED) {
+                            val interval = parsed.seconds
+                            while (true) {
+                                delay(interval)
+                                viewer.let { v ->
+                                    when (v) {
+                                        is PagerViewer -> v.moveToNext()
+                                        is WebtoonViewer -> v.scrollDown()
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             .launchIn(lifecycleScope)
@@ -755,7 +770,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                         retried++
                     }
 
-                toast("Retrying $retried failed pages...")
+                toast(resources.getQuantityString(R.plurals.eh_retry_toast, retried, retried))
             }
             .launchIn(lifecycleScope)
 
@@ -771,26 +786,25 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
 
         binding.ehBoostPage.clicks()
             .onEach {
-                viewer?.let { _ ->
-                    val curPage = exhCurrentpage() ?: run {
-                        toast("This page cannot be boosted (invalid page)!")
-                        return@let
-                    }
+                viewer ?: return@onEach
+                val curPage = exhCurrentpage() ?: run {
+                    toast(R.string.eh_boost_page_invalid)
+                    return@onEach
+                }
 
-                    if (curPage.status == Page.ERROR) {
-                        toast("Page failed to load, press the retry button instead!")
-                    } else if (curPage.status == Page.LOAD_PAGE || curPage.status == Page.DOWNLOAD_IMAGE) {
-                        toast("This page is already downloading!")
-                    } else if (curPage.status == Page.READY) {
-                        toast("This page has already been downloaded!")
+                if (curPage.status == Page.ERROR) {
+                    toast(R.string.eh_boost_page_errored)
+                } else if (curPage.status == Page.LOAD_PAGE || curPage.status == Page.DOWNLOAD_IMAGE) {
+                    toast(R.string.eh_boost_page_downloading)
+                } else if (curPage.status == Page.READY) {
+                    toast(R.string.eh_boost_page_downloaded)
+                } else {
+                    val loader = (presenter.viewerChaptersRelay.value.currChapter.pageLoader as? HttpPageLoader)
+                    if (loader != null) {
+                        loader.boostPage(curPage)
+                        toast(R.string.eh_boost_boosted)
                     } else {
-                        val loader = (presenter.viewerChaptersRelay.value.currChapter.pageLoader as? HttpPageLoader)
-                        if (loader != null) {
-                            loader.boostPage(curPage)
-                            toast("Boosted current page!")
-                        } else {
-                            toast("This page cannot be boosted (invalid page loader)!")
-                        }
+                        toast(R.string.eh_boost_invalid_loader)
                     }
                 }
             }
@@ -803,15 +817,6 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                     .setMessage(R.string.eh_boost_page_help_message)
                     .setPositiveButton(android.R.string.ok, null)
                     .show()
-            }
-            .launchIn(lifecycleScope)
-
-        autoScrollFlow
-            .onEach {
-                viewer.let { v ->
-                    if (v is PagerViewer) v.moveToNext()
-                    else if (v is WebtoonViewer) v.scrollDown()
-                }
             }
             .launchIn(lifecycleScope)
     }
@@ -860,8 +865,8 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         if (doublePages) {
             // If we're moving from singe to double, we want the current page to be the first page
             pViewer.config.shiftDoublePage = (
-                binding.pageSeekbar.progress +
-                    (currentChapter?.pages?.take(binding.pageSeekbar.progress)?.count { it.fullPage || it.isolatedPage } ?: 0)
+                binding.pageSlider.value.floor() +
+                    (currentChapter?.pages?.take(binding.pageSlider.value.floor())?.count { it.fullPage || it.isolatedPage } ?: 0)
                 ) % 2 != 0
         }
         presenter.viewerChaptersRelay.value?.let {
@@ -911,18 +916,8 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                 R.drawable.ic_crop_24dp
             } else {
                 R.drawable.ic_crop_off_24dp
-            }
+            },
         )
-    }
-
-    private var listeners: MutableList<ActionBar.OnMenuVisibilityListener> = mutableListOf()
-
-    fun addOnMenuVisibilityListener(listener: ActionBar.OnMenuVisibilityListener) {
-        listeners.add(listener)
-    }
-
-    fun removeOnMenuVisibilityListener(listener: ActionBar.OnMenuVisibilityListener) {
-        listeners.remove(listener)
     }
 
     /**
@@ -931,7 +926,6 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
      */
     fun setMenuVisibility(visible: Boolean, animate: Boolean = true) {
         menuVisible = visible
-        listeners.forEach { listener -> listener.onMenuVisibilityChanged(visible) }
         if (visible) {
             windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
             binding.readerMenu.isVisible = true
@@ -945,7 +939,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                             // Fix status bar being translucent the first time it's opened.
                             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
                         }
-                    }
+                    },
                 )
                 // EXH -->
                 binding.header.startAnimation(toolbarAnimation)
@@ -981,7 +975,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                         override fun onAnimationEnd(animation: Animation) {
                             binding.readerMenu.isVisible = false
                         }
-                    }
+                    },
                 )
                 // EXH -->
                 binding.header.startAnimation(toolbarAnimation)
@@ -1019,7 +1013,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
             applicationContext,
             url,
             source.id,
-            presenter.manga!!.title
+            presenter.manga!!.title,
         )
         startActivity(intent)
     }
@@ -1037,7 +1031,15 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
 
         val newViewer = ReadingModeType.toViewer(presenter.getMangaReadingMode(), this)
 
-        setOrientation(presenter.getMangaOrientationType())
+        updateCropBordersShortcut()
+        if (window.sharedElementEnterTransition is MaterialContainerTransform) {
+            // Wait until transition is complete to avoid crash on API 26
+            window.sharedElementEnterTransition.doOnEnd {
+                setOrientation(presenter.getMangaOrientationType())
+            }
+        } else {
+            setOrientation(presenter.getMangaOrientationType())
+        }
 
         // Destroy previous viewer if there was one
         if (prevViewer != null) {
@@ -1102,7 +1104,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         // SY <--
         binding.toolbar.title = manga.title
 
-        binding.pageSeekbar.isRTL = newViewer is R2LPagerViewer
+        binding.pageSlider.isRTL = newViewer is R2LPagerViewer
         if (newViewer is R2LPagerViewer) {
             binding.leftChapter.setTooltip(R.string.action_next_chapter)
             binding.rightChapter.setTooltip(R.string.action_previous_chapter)
@@ -1120,6 +1122,8 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
             }
         }
         binding.readerContainer.addView(loadingIndicator)
+
+        startPostponedEnterTransition()
     }
 
     private fun showReadingModeToast(mode: Int) {
@@ -1128,7 +1132,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
             readingModeToast?.cancel()
             readingModeToast = toast(strings[mode])
         } catch (e: ArrayIndexOutOfBoundsException) {
-            Timber.e("Unknown reading mode: $mode")
+            logcat(LogPriority.ERROR) { "Unknown reading mode: $mode" }
         }
     }
 
@@ -1196,7 +1200,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
      * this case the activity is closed and a toast is shown to the user.
      */
     fun setInitialChapterError(error: Throwable) {
-        Timber.e(error)
+        logcat(LogPriority.ERROR, error)
         finish()
         toast(error.message)
     }
@@ -1254,7 +1258,8 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         val pages = page.chapter.pages ?: return
 
         val currentPage = if (hasExtraPage) {
-            if (resources.isLTR) "${page.number}-${page.number + 1}" else "${page.number + 1}-${page.number}"
+            val invertDoublePage = (viewer as? PagerViewer)?.config?.invertDoublePages ?: false
+            if (resources.isLTR xor invertDoublePage) "${page.number}-${page.number + 1}" else "${page.number + 1}-${page.number}"
         } else {
             "${page.number}"
         }
@@ -1263,7 +1268,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         binding.pageNumber.text = "$currentPage/${pages.size}"
         // binding.pageText.text = "${page.number}/${pages.size}"
 
-        // Set seekbar page number
+        // Set page numbers
         if (viewer !is R2LPagerViewer) {
             binding.leftPageText.text = currentPage
             binding.rightPageText.text = "${pages.size}"
@@ -1272,17 +1277,19 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
             binding.leftPageText.text = "${pages.size}"
         }
 
+        // Set slider progress
+        binding.pageSlider.isEnabled = pages.size > 1
+        binding.pageSlider.valueTo = max(pages.lastIndex.toFloat(), 1f)
+        binding.pageSlider.value = page.index.toFloat()
+
+        // SY -->
+        binding.pageSliderVert.valueTo = max(pages.lastIndex.toFloat(), 1f)
+        binding.pageSliderVert.value = page.index.toFloat()
+        // SY <--
+
         // SY -->
         binding.abovePageText.text = currentPage
         binding.belowPageText.text = "${pages.size}"
-        // SY <--
-
-        binding.pageSeekbar.max = pages.lastIndex
-        binding.pageSeekbar.progress = page.index
-
-        // SY -->
-        binding.pageSeekbarVert.max = pages.lastIndex
-        binding.pageSeekbarVert.progress = page.index
         // SY <--
     }
 
@@ -1299,7 +1306,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                 page,
                 extraPage,
                 (viewer !is R2LPagerViewer) xor (viewer?.config?.invertDoublePages ?: false),
-                viewer?.config?.pageCanvasColor
+                viewer?.config?.pageCanvasColor,
             ).show()
         } catch (e: WindowManager.BadTokenException) {
             xLogE("Caught and ignoring reader page sheet launch exception!", e)
@@ -1359,7 +1366,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
      * Called from the presenter when a page is ready to be shared. It shows Android's default
      * sharing tool.
      */
-    fun onShareImageResult(file: File, page: ReaderPage /* SY --> */, secondPage: ReaderPage? = null /* SY <-- */) {
+    fun onShareImageResult(uri: Uri, page: ReaderPage /* SY --> */, secondPage: ReaderPage? = null /* SY <-- */) {
         val manga = presenter.manga ?: return
         val chapter = page.chapter.chapter
 
@@ -1371,14 +1378,10 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
         }
         // SY <--
 
-        val uri = file.getUriCompat(this)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            putExtra(Intent.EXTRA_TEXT, /* SY --> */ text /* SY <-- */)
-            putExtra(Intent.EXTRA_STREAM, uri)
-            clipData = ClipData.newRawUri(null, uri)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
-            type = "image/*"
-        }
+        val intent = uri.toShareIntent(
+            context = applicationContext,
+            message = /* SY --> */ text, // SY <--
+        )
         startActivity(Intent.createChooser(intent, getString(R.string.action_share)))
     }
 
@@ -1406,7 +1409,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                 toast(R.string.picture_saved)
             }
             is ReaderPresenter.SaveImageResult.Error -> {
-                Timber.e(result.error)
+                logcat(LogPriority.ERROR, result.error)
             }
         }
     }
@@ -1416,7 +1419,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
      * cover to the presenter.
      */
     fun setAsCover(page: ReaderPage) {
-        presenter.setAsCover(page)
+        presenter.setAsCover(this, page)
     }
 
     /**
@@ -1429,7 +1432,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                 Success -> R.string.cover_updated
                 AddToLibraryFirst -> R.string.notification_first_add_to_library
                 Error -> R.string.notification_cover_update_failed
-            }
+            },
         )
     }
 
@@ -1476,12 +1479,12 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                                         -1f, 0f, 0f, 0f, 255f,
                                         0f, -1f, 0f, 0f, 255f,
                                         0f, 0f, -1f, 0f, 255f,
-                                        0f, 0f, 0f, 1f, 0f
-                                    )
-                                )
+                                        0f, 0f, 0f, 1f, 0f,
+                                    ),
+                                ),
                             )
                         }
-                    }
+                    },
                 )
             }
         }
@@ -1498,7 +1501,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                             2 -> R.color.reader_background_dark
                             3 -> automaticBackgroundColor()
                             else -> android.R.color.black
-                        }
+                        },
                     )
                 }
                 .launchIn(lifecycleScope)
@@ -1561,7 +1564,7 @@ class ReaderActivity : BaseRxActivity<ReaderActivityBinding, ReaderPresenter>() 
                             PagerConfig.PageLayout.AUTOMATIC -> resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
                             else -> false
                         },
-                        true
+                        true,
                     )
                 }
                 .launchIn(lifecycleScope)

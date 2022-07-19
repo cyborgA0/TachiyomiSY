@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.source.model
 
+import data.Mangas
 import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.database.models.MangaImpl
 import eu.kanade.tachiyomi.data.download.DownloadManager
@@ -56,19 +57,19 @@ interface SManga : Serializable {
         // EXH <--
 
         if (other.author != null) {
-            author = /* SY --> */ other.originalAuthor /* SY <-- */
+            author = /* SY --> */ other.originalAuthor // SY <--
         }
 
         if (other.artist != null) {
-            artist = /* SY --> */ other.originalArtist /* SY <-- */
+            artist = /* SY --> */ other.originalArtist // SY <--
         }
 
         if (other.description != null) {
-            description = /* SY --> */ other.originalDescription /* SY <-- */
+            description = /* SY --> */ other.originalDescription // SY <--
         }
 
         if (other.genre != null) {
-            genre = /* SY --> */ other.originalGenre /* SY <-- */
+            genre = /* SY --> */ other.originalGenre // SY <--
         }
 
         if (other.thumbnail_url != null) {
@@ -82,17 +83,53 @@ interface SManga : Serializable {
         }
     }
 
+    fun copyFrom(other: Mangas) {
+        // EXH -->
+        if (other.title.isNotBlank() && originalTitle != other.title) {
+            val oldTitle = originalTitle
+            title = other.title
+            val source = (this as? Manga)?.source
+            if (source != null) {
+                Injekt.get<DownloadManager>().renameMangaDir(oldTitle, other.title, source)
+            }
+        }
+        // EXH <--
+
+        if (other.author != null) {
+            author = other.author
+        }
+
+        if (other.artist != null) {
+            artist = other.artist
+        }
+
+        if (other.description != null) {
+            description = other.description
+        }
+
+        if (other.genre != null) {
+            genre = other.genre.joinToString(separator = ", ")
+        }
+
+        if (other.thumbnail_url != null) {
+            thumbnail_url = other.thumbnail_url
+        }
+
+        status = other.status.toInt()
+
+        if (!initialized) {
+            initialized = other.initialized
+        }
+    }
+
     companion object {
         const val UNKNOWN = 0
         const val ONGOING = 1
         const val COMPLETED = 2
         const val LICENSED = 3
-
-        // SY --> Mangadex specific statuses
-        const val PUBLICATION_COMPLETE = 61
-        const val CANCELLED = 62
-        const val HIATUS = 63
-        // SY <--
+        const val PUBLISHING_FINISHED = 4
+        const val CANCELLED = 5
+        const val ON_HIATUS = 6
 
         fun create(): SManga {
             return SMangaImpl()
@@ -109,7 +146,7 @@ fun SManga.toMangaInfo(): MangaInfo {
         description = this.description ?: "",
         genres = this.genre?.split(", ") ?: emptyList(),
         status = this.status,
-        cover = this.thumbnail_url ?: ""
+        cover = this.thumbnail_url ?: "",
     )
 }
 

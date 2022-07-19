@@ -3,7 +3,7 @@ package eu.kanade.tachiyomi.ui.browse.migration.search
 import android.os.Bundle
 import android.view.View
 import androidx.core.os.bundleOf
-import eu.kanade.tachiyomi.data.database.models.Manga
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.ui.browse.migration.advanced.process.MigrationListController
@@ -13,15 +13,15 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 class SourceSearchController(
-    bundle: Bundle
+    bundle: Bundle,
 ) : BrowseSourceController(bundle) {
 
     constructor(targetController: MigrationListController, manga: Manga, source: CatalogueSource, searchQuery: String? = null) : this(
         bundleOf(
             SOURCE_ID_KEY to source.id,
             MANGA_KEY to manga,
-            SEARCH_QUERY_KEY to searchQuery
-        )
+            SEARCH_QUERY_KEY to searchQuery,
+        ),
     ) {
         this.targetController = targetController
     }

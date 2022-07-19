@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.browse.migration.advanced.design
 
 import android.app.Activity
+import android.content.res.Resources
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -9,8 +10,8 @@ import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.Toast
 import androidx.core.view.isVisible
-import com.bluelinelabs.conductor.Controller
-import com.tfcporciuncula.flow.Preference
+import com.fredporciuncula.flow.preferences.Preference
+import com.google.android.material.bottomsheet.BottomSheetBehavior
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.databinding.MigrationBottomSheetBinding
@@ -19,13 +20,13 @@ import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.widget.sheet.BaseBottomSheetDialog
 import uy.kohesive.injekt.injectLazy
 
-class MigrationBottomSheetDialog(activity: Activity, private val listener: StartMigrationListener) : BaseBottomSheetDialog(activity) {
+class MigrationBottomSheetDialog(private val activity: Activity, private val listener: StartMigrationListener) : BaseBottomSheetDialog(activity) {
     private val preferences: PreferencesHelper by injectLazy()
 
     lateinit var binding: MigrationBottomSheetBinding
 
     override fun createView(inflater: LayoutInflater): View {
-        binding = MigrationBottomSheetBinding.inflate(inflater)
+        binding = MigrationBottomSheetBinding.inflate(activity.layoutInflater)
         return binding.root
     }
 
@@ -37,16 +38,19 @@ class MigrationBottomSheetDialog(activity: Activity, private val listener: Start
 
         initPreferences()
 
-        binding.fab.setOnClickListener {
+        binding.migrateBtn.setOnClickListener {
             preferences.skipPreMigration().set(binding.skipStep.isChecked)
             preferences.hideNotFoundMigration().set(binding.HideNotFoundManga.isChecked)
             listener.startMigration(
                 if (binding.useSmartSearch.isChecked && binding.extraSearchParamText.text.isNotBlank()) {
                     binding.extraSearchParamText.toString()
-                } else null
+                } else null,
             )
             dismiss()
         }
+
+        behavior.peekHeight = Resources.getSystem().displayMetrics.heightPixels
+        behavior.state = BottomSheetBehavior.STATE_COLLAPSED
     }
 
     /**
@@ -58,11 +62,13 @@ class MigrationBottomSheetDialog(activity: Activity, private val listener: Start
         binding.migChapters.isChecked = MigrationFlags.hasChapters(flags)
         binding.migCategories.isChecked = MigrationFlags.hasCategories(flags)
         binding.migTracking.isChecked = MigrationFlags.hasTracks(flags)
+        binding.migCustomCover.isChecked = MigrationFlags.hasCustomCover(flags)
         binding.migExtra.isChecked = MigrationFlags.hasExtra(flags)
 
         binding.migChapters.setOnCheckedChangeListener { _, _ -> setFlags() }
         binding.migCategories.setOnCheckedChangeListener { _, _ -> setFlags() }
         binding.migTracking.setOnCheckedChangeListener { _, _ -> setFlags() }
+        binding.migCustomCover.setOnCheckedChangeListener { _, _ -> setFlags() }
         binding.migExtra.setOnCheckedChangeListener { _, _ -> setFlags() }
 
         binding.useSmartSearch.bindToPreference(preferences.smartMigration())
@@ -76,9 +82,9 @@ class MigrationBottomSheetDialog(activity: Activity, private val listener: Start
         binding.HideNotFoundManga.isChecked = preferences.hideNotFoundMigration().get()
         binding.skipStep.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) {
-                (listener as? Controller)?.activity?.toast(
+                context.toast(
                     R.string.pre_migration_skip_toast,
-                    Toast.LENGTH_LONG
+                    Toast.LENGTH_LONG,
                 )
             }
         }
@@ -89,6 +95,7 @@ class MigrationBottomSheetDialog(activity: Activity, private val listener: Start
         if (binding.migChapters.isChecked) flags = flags or MigrationFlags.CHAPTERS
         if (binding.migCategories.isChecked) flags = flags or MigrationFlags.CATEGORIES
         if (binding.migTracking.isChecked) flags = flags or MigrationFlags.TRACK
+        if (binding.migCustomCover.isChecked) flags = flags or MigrationFlags.CUSTOM_COVER
         if (binding.migExtra.isChecked) flags = flags or MigrationFlags.EXTRA
         preferences.migrateFlags().set(flags)
     }

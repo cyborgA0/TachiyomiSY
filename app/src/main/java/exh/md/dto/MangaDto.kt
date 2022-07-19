@@ -8,7 +8,7 @@ data class MangaListDto(
     override val limit: Int,
     override val offset: Int,
     override val total: Int,
-    override val data: List<MangaDataDto>
+    override val data: List<MangaDataDto>,
 ) : ListCallDto<MangaDataDto>
 
 @Serializable
@@ -44,12 +44,12 @@ data class MangaAttributesDto(
 @Serializable
 data class TagDto(
     val id: String,
-    val attributes: TagAttributesDto
+    val attributes: TagAttributesDto,
 )
 
 @Serializable
 data class TagAttributesDto(
-    val name: Map<String, String>
+    val name: Map<String, String>,
 )
 
 @Serializable
@@ -121,4 +121,23 @@ data class CoverDataDto(
 @Serializable
 data class CoverAttributesDto(
     val fileName: String,
+)
+
+@Serializable
+data class AggregateDto(
+    val result: String,
+    val volumes: Map<String, AggregateVolume>,
+)
+
+@Serializable
+data class AggregateVolume(
+    val volume: String,
+    val count: String,
+    val chapters: Map<String, AggregateChapter>,
+)
+
+@Serializable
+data class AggregateChapter(
+    val chapter: String,
+    val count: String,
 )

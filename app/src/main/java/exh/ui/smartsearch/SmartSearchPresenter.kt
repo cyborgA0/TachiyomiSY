@@ -1,27 +1,28 @@
 package exh.ui.smartsearch
 
 import android.os.Bundle
-import eu.kanade.tachiyomi.data.database.models.Manga
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.ui.browse.source.SourceController
+import eu.kanade.tachiyomi.ui.browse.source.SourcesController
+import eu.kanade.tachiyomi.util.lang.launchIO
 import exh.smartsearch.SmartSearchEngine
 import exh.ui.base.CoroutinePresenter
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.asSharedFlow
 
-class SmartSearchPresenter(private val source: CatalogueSource, private val config: SourceController.SmartSearchConfig) :
+class SmartSearchPresenter(private val source: CatalogueSource, private val config: SourcesController.SmartSearchConfig) :
     CoroutinePresenter<SmartSearchController>() {
 
-    val smartSearchFlow = MutableSharedFlow<SearchResults>()
+    private val _smartSearchFlow = MutableSharedFlow<SearchResults>()
+    val smartSearchFlow = _smartSearchFlow.asSharedFlow()
 
     private val smartSearchEngine = SmartSearchEngine()
 
     override fun onCreate(savedState: Bundle?) {
         super.onCreate(savedState)
 
-        launch(Dispatchers.IO) {
+        presenterScope.launchIO {
             val result = try {
                 val resultManga = smartSearchEngine.smartSearch(source, config.origTitle)
                 if (resultManga != null) {
@@ -38,7 +39,7 @@ class SmartSearchPresenter(private val source: CatalogueSource, private val conf
                 }
             }
 
-            smartSearchFlow.emit(result)
+            _smartSearchFlow.emit(result)
         }
     }
 

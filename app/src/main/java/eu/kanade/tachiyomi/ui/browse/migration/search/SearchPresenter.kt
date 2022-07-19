@@ -1,6 +1,5 @@
 package eu.kanade.tachiyomi.ui.browse.migration.search
-
-import eu.kanade.tachiyomi.data.database.models.Manga
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchCardItem
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchItem
@@ -9,7 +8,7 @@ import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchPresenter
 class SearchPresenter(
     initialQuery: String? = "",
     private val manga: Manga,
-    sources: List<CatalogueSource>? = null
+    sources: List<CatalogueSource>? = null,
 ) : GlobalSearchPresenter(initialQuery, sourcesToUse = sources) {
 
     override fun getEnabledSources(): List<CatalogueSource> {

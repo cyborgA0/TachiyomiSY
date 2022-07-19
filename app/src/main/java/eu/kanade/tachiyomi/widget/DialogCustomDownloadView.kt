@@ -1,14 +1,18 @@
 package eu.kanade.tachiyomi.widget
 
 import android.content.Context
+import android.text.InputFilter
 import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.LinearLayout
+import androidx.core.text.isDigitsOnly
 import androidx.core.widget.doOnTextChanged
 import eu.kanade.tachiyomi.databinding.DownloadCustomAmountBinding
-import timber.log.Timber
+import eu.kanade.tachiyomi.util.system.logcat
+import logcat.LogPriority
 
 /**
  * Custom dialog to select how many chapters to download.
@@ -44,6 +48,7 @@ class DialogCustomDownloadView @JvmOverloads constructor(context: Context, attrs
 
         // Set download count to 0.
         binding.myNumber.text = SpannableStringBuilder(getAmount(0).toString())
+        binding.myNumber.filters = arrayOf(DigitInputFilter())
 
         // When user presses button decrease amount by 10.
         binding.btnDecrease10.setOnClickListener {
@@ -71,7 +76,7 @@ class DialogCustomDownloadView @JvmOverloads constructor(context: Context, attrs
                 amount = getAmount(text.toString().toInt())
             } catch (error: NumberFormatException) {
                 // Catch NumberFormatException to prevent parse exception when input is empty.
-                Timber.e(error)
+                logcat(LogPriority.ERROR, error)
             }
         }
     }
@@ -98,6 +103,23 @@ class DialogCustomDownloadView @JvmOverloads constructor(context: Context, attrs
             input > max -> max
             input < min -> min
             else -> input
+        }
+    }
+}
+
+private class DigitInputFilter : InputFilter {
+
+    override fun filter(
+        source: CharSequence,
+        start: Int,
+        end: Int,
+        dest: Spanned,
+        dstart: Int,
+        dend: Int,
+    ): CharSequence {
+        return when {
+            source.toString().isDigitsOnly() -> source.toString()
+            else -> ""
         }
     }
 }

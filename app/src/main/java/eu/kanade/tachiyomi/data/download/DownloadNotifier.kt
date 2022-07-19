@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.data.download
 
+import android.app.PendingIntent
 import android.content.Context
 import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
@@ -93,18 +94,19 @@ internal class DownloadNotifier(private val context: Context) {
                 addAction(
                     R.drawable.ic_pause_24dp,
                     context.getString(R.string.action_pause),
-                    NotificationReceiver.pauseDownloadsPendingBroadcast(context)
+                    NotificationReceiver.pauseDownloadsPendingBroadcast(context),
                 )
             }
 
             val downloadingProgressText = context.getString(
                 R.string.chapter_downloading_progress,
                 download.downloadedImages,
-                download.pages!!.size
+                download.pages!!.size,
             )
 
             if (preferences.hideNotificationContent()) {
                 setContentTitle(downloadingProgressText)
+                setContentText(null)
             } else {
                 val title = download.manga.title.chop(15)
                 val quotedTitle = Pattern.quote(title)
@@ -137,13 +139,13 @@ internal class DownloadNotifier(private val context: Context) {
             addAction(
                 R.drawable.ic_play_arrow_24dp,
                 context.getString(R.string.action_resume),
-                NotificationReceiver.resumeDownloadsPendingBroadcast(context)
+                NotificationReceiver.resumeDownloadsPendingBroadcast(context),
             )
             // Clear action
             addAction(
                 R.drawable.ic_close_24dp,
                 context.getString(R.string.action_cancel_all),
-                NotificationReceiver.clearDownloadsPendingBroadcast(context)
+                NotificationReceiver.clearDownloadsPendingBroadcast(context),
             )
 
             show(Notifications.ID_DOWNLOAD_CHAPTER_PROGRESS)
@@ -183,16 +185,20 @@ internal class DownloadNotifier(private val context: Context) {
      * Called when the downloader receives a warning.
      *
      * @param reason the text to show.
+     * @param timeout duration after which to automatically dismiss the notification.
+     * Only works on Android 8+.
      */
-    fun onWarning(reason: String) {
+    fun onWarning(reason: String, timeout: Long? = null, contentIntent: PendingIntent? = null) {
         with(errorNotificationBuilder) {
             setContentTitle(context.getString(R.string.download_notifier_downloader_title))
-            setContentText(reason)
-            setSmallIcon(android.R.drawable.stat_sys_warning)
+            setStyle(NotificationCompat.BigTextStyle().bigText(reason))
+            setSmallIcon(R.drawable.ic_warning_white_24dp)
             setAutoCancel(true)
             clearActions()
             setContentIntent(NotificationHandler.openDownloadManagerPendingActivity(context))
             setProgress(0, 0, false)
+            timeout?.let { setTimeoutAfter(it) }
+            contentIntent?.let { setContentIntent(it) }
 
             show(Notifications.ID_DOWNLOAD_CHAPTER_ERROR)
         }
@@ -208,15 +214,14 @@ internal class DownloadNotifier(private val context: Context) {
      * @param error string containing error information.
      * @param chapter string containing chapter title.
      */
-    fun onError(error: String? = null, chapter: String? = null) {
+    fun onError(error: String? = null, chapter: String? = null, mangaTitle: String? = null) {
         // Create notification
         with(errorNotificationBuilder) {
             setContentTitle(
-                chapter
-                    ?: context.getString(R.string.download_notifier_downloader_title)
+                mangaTitle?.plus(": $chapter") ?: context.getString(R.string.download_notifier_downloader_title),
             )
             setContentText(error ?: context.getString(R.string.download_notifier_unknown_error))
-            setSmallIcon(android.R.drawable.stat_sys_warning)
+            setSmallIcon(R.drawable.ic_warning_white_24dp)
             clearActions()
             setContentIntent(NotificationHandler.openDownloadManagerPendingActivity(context))
             setProgress(0, 0, false)

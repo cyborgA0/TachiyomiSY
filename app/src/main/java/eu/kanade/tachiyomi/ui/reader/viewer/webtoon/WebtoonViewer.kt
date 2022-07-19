@@ -18,10 +18,10 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.viewer.BaseViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
+import eu.kanade.tachiyomi.util.system.logcat
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import rx.subscriptions.CompositeSubscription
-import timber.log.Timber
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.math.max
@@ -67,7 +67,8 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
     /**
      * Currently active item. It can be a chapter page or a chapter transition.
      */
-    /* [EXH] private */ var currentPage: Any? = null
+    /* [EXH] private */
+    var currentPage: Any? = null
 
     /**
      * Subscriptions to keep while this viewer is used.
@@ -76,7 +77,7 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
 
     private val threshold: Int =
         Injekt.get<PreferencesHelper>()
-            .readerHideTreshold()
+            .readerHideThreshold()
             .get()
             .threshold
 
@@ -103,15 +104,16 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
                             activity.requestPreloadChapter(firstItem.to)
                         }
                     }
+
+                    val lastIndex = layoutManager.findLastEndVisibleItemPosition()
+                    val lastItem = adapter.items.getOrNull(lastIndex)
+                    if (lastItem is ChapterTransition.Next && lastItem.to == null) {
+                        activity.showMenu()
+                    }
                 }
-            }
+            },
         )
         recycler.tapListener = f@{ event ->
-            if (!config.tappingEnabled) {
-                activity.toggleMenu()
-                return@f
-            }
-
             val pos = PointF(event.rawX / recycler.width, event.rawY / recycler.height)
             val navigator = config.navigator
 
@@ -146,7 +148,7 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
 
         config.navigationModeChangedListener = {
             val showOnStart = config.navigationOverlayOnStart || config.forceNavigationOverlay
-            activity.binding.navigationOverlay.setNavigation(config.navigator, config.tappingEnabled, showOnStart)
+            activity.binding.navigationOverlay.setNavigation(config.navigator, showOnStart)
         }
 
         // SY -->
@@ -201,17 +203,17 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
      */
     private fun onPageSelected(page: ReaderPage, allowPreload: Boolean) {
         val pages = page.chapter.pages ?: return
-        Timber.d("onPageSelected: ${page.number}/${pages.size}")
+        logcat { "onPageSelected: ${page.number}/${pages.size}" }
         activity.onPageSelected(page)
 
         // Preload next chapter once we're within the last 5 pages of the current chapter
         val inPreloadRange = pages.size - page.number < 5
         if (inPreloadRange && allowPreload && page.chapter == adapter.currentChapter) {
-            Timber.d("Request preload next chapter because we're at page ${page.number} of ${pages.size}")
+            logcat { "Request preload next chapter because we're at page ${page.number} of ${pages.size}" }
             val nextItem = adapter.items.getOrNull(adapter.items.size - 1)
             val transitionChapter = (nextItem as? ChapterTransition.Next)?.to ?: (nextItem as?ReaderPage)?.chapter
             if (transitionChapter != null) {
-                Timber.d("Requesting to preload chapter ${transitionChapter.chapter.chapter_number}")
+                logcat { "Requesting to preload chapter ${transitionChapter.chapter.chapter_number}" }
                 activity.requestPreloadChapter(transitionChapter)
             }
         }
@@ -222,14 +224,11 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
      * preload of the destination chapter of the transition.
      */
     private fun onTransitionSelected(transition: ChapterTransition) {
-        Timber.d("onTransitionSelected: $transition")
+        logcat { "onTransitionSelected: $transition" }
         val toChapter = transition.to
         if (toChapter != null) {
-            Timber.d("Request preload destination chapter because we're on the transition")
+            logcat { "Request preload destination chapter because we're on the transition" }
             activity.requestPreloadChapter(toChapter)
-        } else if (transition is ChapterTransition.Next) {
-            // No more chapters, show menu because the user is probably going to close the reader
-            activity.showMenu()
         }
     }
 
@@ -237,12 +236,12 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
      * Tells this viewer to set the given [chapters] as active.
      */
     override fun setChapters(chapters: ViewerChapters) {
-        Timber.d("setChapters")
+        logcat { "setChapters" }
         val forceTransition = config.alwaysShowChapterTransition || currentPage is ChapterTransition
         adapter.setChapters(chapters, forceTransition)
 
         if (recycler.isGone) {
-            Timber.d("Recycler first layout")
+            logcat { "Recycler first layout" }
             val pages = chapters.currChapter.pages ?: return
             moveToPage(pages[min(chapters.currChapter.requestedPage, pages.lastIndex)])
             recycler.isVisible = true
@@ -253,15 +252,15 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
      * Tells this viewer to move to the given [page].
      */
     override fun moveToPage(page: ReaderPage) {
-        Timber.d("moveToPage")
+        logcat { "moveToPage" }
         val position = adapter.items.indexOf(page)
         if (position != -1) {
-            recycler.scrollToPosition(position)
+            layoutManager.scrollToPositionWithOffset(position, 0)
             if (layoutManager.findLastEndVisibleItemPosition() == -1) {
                 onScrolled(pos = position)
             }
         } else {
-            Timber.d("Page $page not found in adapter")
+            logcat { "Page $page not found in adapter" }
         }
     }
 
@@ -292,7 +291,8 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
     /**
      * Scrolls down by [scrollDistance].
      */
-    /* [EXH] private */ fun scrollDown() {
+    /* [EXH] private */
+    fun scrollDown() {
         // SY -->
         if (!isContinuous && tapByPage) {
             val currentPage = currentPage
@@ -347,11 +347,13 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
 
             KeyEvent.KEYCODE_DPAD_LEFT,
             KeyEvent.KEYCODE_DPAD_UP,
-            KeyEvent.KEYCODE_PAGE_UP -> if (isUp) scrollUp()
+            KeyEvent.KEYCODE_PAGE_UP,
+            -> if (isUp) scrollUp()
 
             KeyEvent.KEYCODE_DPAD_RIGHT,
             KeyEvent.KEYCODE_DPAD_DOWN,
-            KeyEvent.KEYCODE_PAGE_DOWN -> if (isUp) scrollDown()
+            KeyEvent.KEYCODE_PAGE_DOWN,
+            -> if (isUp) scrollDown()
             else -> return false
         }
         return true
@@ -374,7 +376,7 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
         adapter.refresh()
         adapter.notifyItemRangeChanged(
             max(0, position - 3),
-            min(position + 3, adapter.itemCount - 1)
+            min(position + 3, adapter.itemCount - 1),
         )
     }
 }

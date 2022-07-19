@@ -2,17 +2,13 @@ package eu.kanade.tachiyomi.data.backup
 
 import android.content.Context
 import android.net.Uri
+import eu.kanade.data.DatabaseHandler
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
-import eu.kanade.tachiyomi.data.database.models.Chapter
 import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.database.models.Track
 import eu.kanade.tachiyomi.data.library.CustomMangaManager
 import eu.kanade.tachiyomi.data.track.TrackManager
-import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.util.chapter.NoChaptersException
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
-import exh.eh.EHentaiThrottleManager
 import kotlinx.coroutines.Job
 import uy.kohesive.injekt.injectLazy
 import java.io.File
@@ -22,7 +18,7 @@ import java.util.Locale
 
 abstract class AbstractBackupRestore<T : AbstractBackupManager>(protected val context: Context, protected val notifier: BackupNotifier) {
 
-    protected val db: DatabaseHelper by injectLazy()
+    protected val handler: DatabaseHandler by injectLazy()
     protected val trackManager: TrackManager by injectLazy()
 
     // SY -->
@@ -35,10 +31,6 @@ abstract class AbstractBackupRestore<T : AbstractBackupManager>(protected val co
 
     protected var restoreAmount = 0
     protected var restoreProgress = 0
-
-    // SY -->
-    protected val throttleManager = EHentaiThrottleManager()
-    // SY <--
 
     /**
      * Mapping of source ID to source name from backup data
@@ -68,28 +60,6 @@ abstract class AbstractBackupRestore<T : AbstractBackupManager>(protected val co
     }
 
     /**
-     * Fetches chapter information.
-     *
-     * @param source source of manga
-     * @param manga manga that needs updating
-     * @return Updated manga chapters.
-     */
-    internal suspend fun updateChapters(source: Source, manga: Manga, chapters: List<Chapter>): Pair<List<Chapter>, List<Chapter>> {
-        return try {
-            backupManager.restoreChapters(source, manga, chapters /* SY --> */, throttleManager /* SY <-- */)
-        } catch (e: Exception) {
-            // If there's any error, return empty update and continue.
-            val errorMessage = if (e is NoChaptersException) {
-                context.getString(R.string.no_chapters_error)
-            } else {
-                e.message
-            }
-            errors.add(Date() to "${manga.title} - $errorMessage")
-            Pair(emptyList(), emptyList())
-        }
-    }
-
-    /**
      * Refreshes tracking information.
      *
      * @param manga manga that needs updating.
@@ -97,11 +67,26 @@ abstract class AbstractBackupRestore<T : AbstractBackupManager>(protected val co
      */
     internal suspend fun updateTracking(manga: Manga, tracks: List<Track>) {
         tracks.forEach { track ->
-            val service = trackManager.getService(track.sync_id)
+            val service = trackManager.getService(track.sync_id.toLong())
             if (service != null && service.isLogged) {
                 try {
                     val updatedTrack = service.refresh(track)
-                    db.insertTrack(updatedTrack).executeAsBlocking()
+                    handler.await {
+                        manga_syncQueries.insert(
+                            updatedTrack.manga_id,
+                            updatedTrack.sync_id.toLong(),
+                            updatedTrack.media_id,
+                            updatedTrack.library_id,
+                            updatedTrack.title,
+                            updatedTrack.last_chapter_read.toDouble(),
+                            updatedTrack.total_chapters.toLong(),
+                            updatedTrack.status.toLong(),
+                            updatedTrack.score,
+                            updatedTrack.tracking_url,
+                            updatedTrack.started_reading_date,
+                            updatedTrack.finished_reading_date,
+                        )
+                    }
                 } catch (e: Exception) {
                     errors.add(Date() to "${manga.title} - ${e.message}")
                 }
@@ -122,7 +107,7 @@ abstract class AbstractBackupRestore<T : AbstractBackupManager>(protected val co
     internal fun showRestoreProgress(
         progress: Int,
         amount: Int,
-        title: String
+        title: String,
     ) {
         notifier.showRestoreProgress(title, progress, amount)
     }

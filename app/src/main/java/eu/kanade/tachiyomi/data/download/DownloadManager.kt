@@ -3,10 +3,10 @@ package eu.kanade.tachiyomi.data.download
 import android.content.Context
 import com.hippo.unifile.UniFile
 import com.jakewharton.rxrelay.BehaviorRelay
+import eu.kanade.domain.category.interactor.GetCategories
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
 import eu.kanade.tachiyomi.data.database.models.Chapter
-import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.download.model.DownloadQueue
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
@@ -15,8 +15,11 @@ import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.util.lang.launchIO
 import eu.kanade.tachiyomi.util.storage.DiskUtil
+import eu.kanade.tachiyomi.util.system.logcat
+import exh.log.xLogE
+import kotlinx.coroutines.runBlocking
+import logcat.LogPriority
 import rx.Observable
-import timber.log.Timber
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -30,7 +33,7 @@ import uy.kohesive.injekt.injectLazy
  */
 class DownloadManager(
     private val context: Context,
-    private val db: DatabaseHelper = Injekt.get()
+    private val getCategories: GetCategories = Injekt.get(),
 ) {
 
     private val sourceManager: SourceManager by injectLazy()
@@ -39,7 +42,7 @@ class DownloadManager(
     /**
      * Downloads provider, used to retrieve the folders where the chapters are or should be stored.
      */
-    private val provider = DownloadProvider(context)
+    val provider = DownloadProvider(context)
 
     /**
      * Cache of downloaded chapters.
@@ -102,11 +105,14 @@ class DownloadManager(
         downloader.clearQueue(isNotification)
     }
 
-    fun startDownloadNow(chapter: Chapter) {
-        val download = downloader.queue.find { it.chapter.id == chapter.id } ?: return
+    fun startDownloadNow(chapterId: Long?) {
+        if (chapterId == null) return
+        val download = downloader.queue.find { it.chapter.id == chapterId }
+        // If not in queue try to start a new download
+        val toAdd = download ?: runBlocking { Download.fromChapterId(chapterId) } ?: return
         val queue = downloader.queue.toMutableList()
-        queue.remove(download)
-        queue.add(0, download)
+        download?.let { queue.remove(it) }
+        queue.add(0, toAdd)
         reorderQueue(queue)
         if (isPaused()) {
             if (DownloadService.isRunning(context)) {
@@ -162,7 +168,7 @@ class DownloadManager(
      * @return an observable containing the list of pages from the chapter.
      */
     fun buildPageList(source: Source, manga: Manga, chapter: Chapter): Observable<List<Page>> {
-        return buildPageList(provider.findChapterDir(chapter, manga, source))
+        return buildPageList(provider.findChapterDir(chapter.name, chapter.scanlator, /* SY --> */ manga.ogTitle /* SY <-- */, source))
     }
 
     /**
@@ -190,12 +196,20 @@ class DownloadManager(
     /**
      * Returns true if the chapter is downloaded.
      *
-     * @param chapter the chapter to check.
-     * @param manga the manga of the chapter.
+     * @param chapterName the name of the chapter to query.
+     * @param chapterScanlator scanlator of the chapter to query
+     * @param mangaTitle the title of the manga to query.
+     * @param sourceId the id of the source of the chapter.
      * @param skipCache whether to skip the directory cache and check in the filesystem.
      */
-    fun isChapterDownloaded(chapter: Chapter, manga: Manga, skipCache: Boolean = false): Boolean {
-        return cache.isChapterDownloaded(chapter, manga, skipCache)
+    fun isChapterDownloaded(
+        chapterName: String,
+        chapterScanlator: String?,
+        mangaTitle: String,
+        sourceId: Long,
+        skipCache: Boolean = false,
+    ): Boolean {
+        return cache.isChapterDownloaded(chapterName, chapterScanlator, mangaTitle, sourceId, skipCache)
     }
 
     /**
@@ -301,7 +315,7 @@ class DownloadManager(
         var cleaned = 0
 
         if (removeNonFavorite && !manga.favorite) {
-            val mangaFolder = provider.getMangaDir(manga, source)
+            val mangaFolder = provider.getMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source)
             cleaned += 1 + mangaFolder.listFiles().orEmpty().size
             mangaFolder.delete()
             cache.removeManga(manga)
@@ -322,12 +336,12 @@ class DownloadManager(
         }
 
         if (cache.getDownloadCount(manga) == 0) {
-            val mangaFolder = provider.getMangaDir(manga, source)
+            val mangaFolder = provider.getMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source)
             if (!mangaFolder.listFiles().isNullOrEmpty()) {
                 mangaFolder.delete()
                 cache.removeManga(manga)
             } else {
-                Timber.e("Cache and download folder doesn't match for %s", manga.title)
+                xLogE("Cache and download folder doesn't match for " + /* SY --> */ manga.ogTitle /* SY <-- */)
             }
         }
         return cleaned
@@ -343,7 +357,7 @@ class DownloadManager(
     fun deleteManga(manga: Manga, source: Source) {
         launchIO {
             downloader.queue.remove(manga)
-            provider.findMangaDir(manga, source)?.delete()
+            provider.findMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source)?.delete()
             cache.removeManga(manga)
         }
     }
@@ -378,28 +392,33 @@ class DownloadManager(
      * @param newChapter the target chapter with the new name.
      */
     fun renameChapter(source: Source, manga: Manga, oldChapter: Chapter, newChapter: Chapter) {
-        val oldNames = provider.getValidChapterDirNames(oldChapter)
-        val newName = provider.getChapterDirName(newChapter)
-        val mangaDir = provider.getMangaDir(manga, source)
+        val oldNames = provider.getValidChapterDirNames(oldChapter.name, oldChapter.scanlator)
+        val mangaDir = provider.getMangaDir(/* SY --> */ manga.ogTitle /* SY <-- */, source)
 
         // Assume there's only 1 version of the chapter name formats present
-        val oldFolder = oldNames.asSequence()
-            .mapNotNull { mangaDir.findFile(it) ?: mangaDir.findFile("$it.cbz") }
-            .firstOrNull()
+        val oldDownload = oldNames.asSequence()
+            .mapNotNull { mangaDir.findFile(it) }
+            .firstOrNull() ?: return
 
-        if (oldFolder?.renameTo(newName + if (oldFolder.name?.endsWith(".cbz") == true) ".cbz" else "") == true) {
+        var newName = provider.getChapterDirName(newChapter.name, newChapter.scanlator)
+        if (oldDownload.isFile && oldDownload.name?.endsWith(".cbz") == true) {
+            newName += ".cbz"
+        }
+
+        if (oldDownload.renameTo(newName)) {
             cache.removeChapter(oldChapter, manga)
-            cache.addChapter(newName + if (oldFolder.name?.endsWith(".cbz") == true) ".cbz" else "", mangaDir, manga)
+            cache.addChapter(newName, mangaDir, manga)
         } else {
-            Timber.e("Could not rename downloaded chapter: %s.", oldNames.joinToString())
+            logcat(LogPriority.ERROR) { "Could not rename downloaded chapter: ${oldNames.joinToString()}." }
         }
     }
 
     private fun getChaptersToDelete(chapters: List<Chapter>, manga: Manga): List<Chapter> {
         // Retrieve the categories that are set to exclude from being deleted on read
         val categoriesToExclude = preferences.removeExcludeCategories().get().map(String::toInt)
-        val categoriesForManga = db.getCategoriesForManga(manga).executeAsBlocking()
-            .mapNotNull { it.id }
+
+        val categoriesForManga = runBlocking { getCategories.await(manga.id!!) }
+            .map { it.id }
             .takeUnless { it.isEmpty() }
             ?: listOf(0)
 

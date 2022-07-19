@@ -2,11 +2,9 @@ package eu.kanade.tachiyomi.ui.library
 
 import android.view.View
 import androidx.core.view.isVisible
-import androidx.recyclerview.widget.RecyclerView
-import coil.clear
-import coil.loadAny
+import coil.dispose
+import coil.load
 import eu.davidea.flexibleadapter.FlexibleAdapter
-import eu.davidea.flexibleadapter.items.IFlexible
 import eu.kanade.tachiyomi.databinding.SourceListItemBinding
 
 /**
@@ -20,9 +18,7 @@ import eu.kanade.tachiyomi.databinding.SourceListItemBinding
  */
 class LibraryListHolder(
     private val view: View,
-    // SY -->
-    adapter: FlexibleAdapter<IFlexible<RecyclerView.ViewHolder>>
-    // SY <--
+    adapter: FlexibleAdapter<*>,
 ) : LibraryHolder<SourceListItemBinding>(view, adapter) {
 
     override val binding = SourceListItemBinding.bind(view)
@@ -50,6 +46,11 @@ class LibraryListHolder(
             isVisible = item.downloadCount > 0
             text = "${item.downloadCount}"
         }
+        // Update the source language and its visibility
+        with(binding.languageText) {
+            isVisible = item.sourceLanguage.isNotEmpty()
+            text = item.sourceLanguage
+        }
         // show local text badge if local manga
         binding.localText.isVisible = item.isLocal
 
@@ -60,7 +61,7 @@ class LibraryListHolder(
         }
 
         // Update the cover
-        binding.thumbnail.clear()
-        binding.thumbnail.loadAny(item.manga)
+        binding.thumbnail.dispose()
+        binding.thumbnail.load(item.manga)
     }
 }

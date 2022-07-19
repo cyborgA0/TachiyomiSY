@@ -15,7 +15,6 @@
     <string name="pref_remove_after_read">Despois de ler</string>
     <string name="pref_remove_after_marked_as_read">Despois de marcar manualmente como lido</string>
     <string name="pref_category_delete_chapters">Eliminar capítulos</string>
-    <string name="pref_download_only_over_wifi">Só descargar con Wi-Fi</string>
     <string name="pref_download_directory">Ubicación de descargas</string>
     <string name="webtoon_side_padding_25">25%</string>
     <string name="webtoon_side_padding_20">20%</string>
@@ -61,7 +60,6 @@
     <string name="white_background">Branco</string>
     <string name="pref_reader_theme">Cor de fondo</string>
     <string name="pref_read_with_long_tap">Diálogo de toque longo</string>
-    <string name="pref_read_with_tapping">Toques</string>
     <string name="pref_read_with_volume_keys_inverted">Invertir teclas de volume</string>
     <string name="pref_read_with_volume_keys">Teclas de volume</string>
     <string name="pref_reader_navigation">Navegación</string>
@@ -84,13 +82,10 @@
     <string name="pref_show_page_number">Amosar número de páxina</string>
     <string name="pref_double_tap_anim_speed">Velocidade da animación ao dar dous toques</string>
     <string name="pref_page_transitions">Animar transición de páxinas</string>
-    <string name="pref_lock_orientation">Bloquear orientación</string>
     <string name="pref_cutout_short">Mostrar contido na área recortada</string>
     <string name="pref_fullscreen">Pantalla completa</string>
     <string name="ext_nsfw_warning">Pode conter contido non apto para menores de 18 anos</string>
     <string name="ext_nsfw_short">+18</string>
-    <string name="ext_language_info">Idioma: %1$s</string>
-    <string name="ext_version_info">Versión: %1$s</string>
     <string name="unofficial_extension_message">Esta extensión non é da lista de extensións oficiais de Tachiyomi.</string>
     <string name="obsolete_extension_message">Esta extensión xa non está dispoñible.</string>
     <string name="untrusted_extension_message">Esta extensión foi firmada non un certificado non confiable e non foi activada
@@ -99,7 +94,6 @@
 \n
 \nConfiando neste certificado aceptas estes riscos.</string>
     <string name="untrusted_extension">Extensión non confiable</string>
-    <string name="ext_available">Dispñible</string>
     <string name="ext_untrusted">Non confiable</string>
     <string name="ext_uninstall">Desinstalar</string>
     <string name="ext_unofficial">Non oficial</string>
@@ -120,23 +114,19 @@
     </plurals>
     <string name="default_category_summary">Preguntar sempre</string>
     <string name="default_category">Categoría por defecto</string>
-    <string name="pref_library_update_error_notification">Mostra notificacións de erros nas actualizacións</string>
     <string name="pref_library_update_refresh_metadata_summary">Comprobar novas portadas e detalles cando se actualiza a biblioteca</string>
     <string name="pref_library_update_refresh_metadata">Refrescar metadatos automáticamente</string>
     <string name="pref_update_only_non_completed">Actualiza só manga en curso</string>
     <string name="charging">Cargando</string>
     <string name="pref_library_update_restriction">Restriccións de actualización da biblioteca</string>
-    <string name="pref_library_update_prioritization">Orden de actualización da biblioteca</string>
     <string name="update_weekly">Semanalmente</string>
     <string name="update_48hour">Cada 2 días</string>
     <string name="update_24hour">Diariamente</string>
     <string name="update_12hour">Cada 12 horas</string>
     <string name="update_6hour">Cada 6 horas</string>
-    <string name="update_3hour">Cada 3 horas</string>
     <string name="update_never">Manual</string>
     <string name="pref_library_update_interval">Frecuancia de actualización da biblioteca</string>
     <string name="pref_category_library_update">Actualizacións</string>
-    <string name="pref_jump_to_chapters">Saltar aos capítulos abertos</string>
     <string name="landscape">Horizontal</string>
     <string name="portrait">Vertical</string>
     <string name="pref_library_columns">Elementos por fila</string>
@@ -156,16 +146,12 @@
     <string name="file_picker_error">Non se atopou unha aplicación para seleccionar arquivos</string>
     <string name="myanimelist_relogin">Por favor, inicia sesión en MAL de novo</string>
     <string name="requires_app_restart">Require reiniciar a aplicación para que surxa efecto</string>
-    <string name="pref_label_nsfw_extension">Etiquetar na lista de extensións</string>
-    <string name="pref_show_nsfw_extension">Amosar na lista de extensións</string>
     <string name="pref_show_nsfw_source">Amosar na lista de fontes</string>
     <string name="pref_category_nsfw_content">Fontes NSFW (+18)</string>
     <string name="pref_category_security">Seguridade</string>
     <string name="pref_manage_notifications">Xestionar notificacións</string>
-    <string name="pref_hide_bottom_bar_on_scroll">Esconder a barra inferior ao desprazar</string>
     <string name="pref_confirm_exit">Confirmar saír</string>
     <string name="pref_date_format">Formato de data</string>
-    <string name="pref_start_screen">Pantalla inicial</string>
     <string name="theme_dark">Encendido</string>
     <string name="theme_light">Apagado</string>
     <string name="theme_system">Utilizar o do sistema</string>
@@ -211,7 +197,6 @@
     <string name="action_display">Amosar</string>
     <string name="action_display_mode">Modo de visualización</string>
     <string name="action_migrate">Migrar</string>
-    <string name="action_open_in_settings">Abrir nos Axustes</string>
     <string name="action_open_in_web_view">Abrir en WebView</string>
     <string name="action_open_in_browser">Abrir no navegador</string>
     <string name="action_resume">Continuar</string>
@@ -249,7 +234,6 @@
     <string name="action_search">Procurar</string>
     <string name="action_sort_date_added">Data de engadido</string>
     <string name="action_sort_latest_chapter">Capítulo máis recente</string>
-    <string name="action_sort_last_checked">Última comprobación</string>
     <string name="action_sort_last_read">Último leído</string>
     <string name="action_sort_total">Capítulos totais</string>
     <string name="action_sort_alpha">Alfabéticamente</string>
@@ -278,4 +262,13 @@
     <string name="label_migration">Migrar</string>
     <string name="label_backup">Copia de seguridade</string>
     <string name="manga">Manga</string>
+    <string name="chapter_not_found">Capítulo non atopado</string>
+    <string name="description">Descripción</string>
+    <string name="completed">Completado</string>
+    <string name="title">Título</string>
+    <string name="licensed">Licenciado</string>
+    <string name="unread">Sen ler</string>
+    <string name="ongoing">En curso</string>
+    <string name="unknown">Descoñecido</string>
+    <string name="no_chapters_error">Non se atoparon capítulos</string>
 </resources>

@@ -2,66 +2,50 @@ package eu.kanade.tachiyomi.data.backup
 
 import android.content.Context
 import android.net.Uri
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
+import eu.kanade.data.DatabaseHandler
+import eu.kanade.data.manga.mangaMapper
+import eu.kanade.data.toLong
+import eu.kanade.domain.manga.interactor.GetFavorites
+import eu.kanade.domain.manga.interactor.GetFlatMetadataById
+import eu.kanade.domain.manga.interactor.GetMergedManga
+import eu.kanade.domain.manga.interactor.InsertFlatMetadata
 import eu.kanade.tachiyomi.data.database.models.Chapter
 import eu.kanade.tachiyomi.data.database.models.Manga
-import eu.kanade.tachiyomi.data.database.models.toMangaInfo
 import eu.kanade.tachiyomi.data.library.CustomMangaManager
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.data.track.TrackManager
-import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceManager
-import eu.kanade.tachiyomi.source.model.toSChapter
-import eu.kanade.tachiyomi.source.online.all.EHentai
-import eu.kanade.tachiyomi.util.chapter.syncChaptersWithSource
-import exh.eh.EHentaiThrottleManager
-import uy.kohesive.injekt.injectLazy
+import exh.metadata.metadata.base.FlatMetadata
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+import data.Mangas as DbManga
+import eu.kanade.domain.manga.model.Manga as DomainManga
 
 abstract class AbstractBackupManager(protected val context: Context) {
 
-    internal val databaseHelper: DatabaseHelper by injectLazy()
-    internal val sourceManager: SourceManager by injectLazy()
-    internal val trackManager: TrackManager by injectLazy()
-    protected val preferences: PreferencesHelper by injectLazy()
+    protected val handler: DatabaseHandler = Injekt.get()
+
+    internal val sourceManager: SourceManager = Injekt.get()
+    internal val trackManager: TrackManager = Injekt.get()
+    protected val preferences: PreferencesHelper = Injekt.get()
+    private val getFavorites: GetFavorites = Injekt.get()
 
     // SY -->
-    protected val customMangaManager: CustomMangaManager by injectLazy()
+    private val getMergedManga: GetMergedManga = Injekt.get()
+    protected val customMangaManager: CustomMangaManager = Injekt.get()
+    private val insertFlatMetadata: InsertFlatMetadata = Injekt.get()
+    private val getFlatMetadataById: GetFlatMetadataById = Injekt.get()
     // SY <--
 
-    abstract fun createBackup(uri: Uri, flags: Int, isJob: Boolean): String?
+    abstract suspend fun createBackup(uri: Uri, flags: Int, isAutoBackup: Boolean): String
 
     /**
      * Returns manga
      *
      * @return [Manga], null if not found
      */
-    internal fun getMangaFromDatabase(manga: Manga): Manga? =
-        databaseHelper.getManga(manga.url, manga.source).executeAsBlocking()
-
-    /**
-     * Fetches chapter information.
-     *
-     * @param source source of manga
-     * @param manga manga that needs updating
-     * @param chapters list of chapters in the backup
-     * @return Updated manga chapters.
-     */
-    internal open suspend fun restoreChapters(source: Source, manga: Manga, chapters: List<Chapter> /* SY --> */, throttleManager: EHentaiThrottleManager /* SY <-- */): Pair<List<Chapter>, List<Chapter>> {
-        // SY -->
-        val fetchedChapters = if (source is EHentai) {
-            source.getChapterList(manga.toMangaInfo(), throttleManager::throttle)
-                .map { it.toSChapter() }
-        } else {
-            source.getChapterList(manga.toMangaInfo())
-                .map { it.toSChapter() }
-        }
-        // SY <--
-        val syncedChapters = syncChaptersWithSource(databaseHelper, fetchedChapters, manga, source)
-        if (syncedChapters.first.isNotEmpty()) {
-            chapters.forEach { it.manga_id = manga.id }
-            updateChapters(chapters)
-        }
-        return syncedChapters
+    internal suspend fun getMangaFromDatabase(url: String, source: Long): DbManga? {
+        return handler.awaitOneOrNull { mangasQueries.getMangaByUrlAndSource(url, source) }
     }
 
     /**
@@ -69,20 +53,27 @@ abstract class AbstractBackupManager(protected val context: Context) {
      *
      * @return [Manga] from library
      */
-    protected fun getFavoriteManga(): List<Manga> =
-        databaseHelper.getFavoriteMangas().executeAsBlocking()
+    protected suspend fun getFavoriteManga(): List<DomainManga> {
+        return getFavorites.await()
+    }
 
     // SY -->
-    protected fun getReadManga(): List<Manga> =
-        databaseHelper.getReadNotInLibraryMangas().executeAsBlocking()
+    protected suspend fun getReadManga(): List<DomainManga> {
+        return handler.awaitList { mangasQueries.getReadMangaNotInLibrary(mangaMapper) }
+    }
 
     /**
      * Returns list containing merged manga that are possibly not in the library
      *
      * @return merged [Manga] that are possibly not in the library
      */
-    protected fun getMergedManga(): List<Manga> =
-        databaseHelper.getMergedMangas().executeAsBlocking()
+    protected suspend fun getMergedManga(): List<DomainManga> {
+        return getMergedManga.await()
+    }
+
+    protected suspend fun getFlatMetadata(mangaId: Long) = getFlatMetadataById.await(mangaId)
+
+    protected suspend fun insertFlatMetadata(flatMetadata: FlatMetadata) = insertFlatMetadata.await(flatMetadata)
     // SY <--
 
     /**
@@ -90,28 +81,126 @@ abstract class AbstractBackupManager(protected val context: Context) {
      *
      * @return id of [Manga], null if not found
      */
-    internal fun insertManga(manga: Manga): Long? =
-        databaseHelper.insertManga(manga).executeAsBlocking().insertedId()
+    internal suspend fun insertManga(manga: Manga): Long {
+        return handler.awaitOne(true) {
+            mangasQueries.insert(
+                source = manga.source,
+                url = manga.url,
+                artist = manga.artist,
+                author = manga.author,
+                description = manga.description,
+                genre = manga.getGenres(),
+                title = manga.title,
+                status = manga.status.toLong(),
+                thumbnailUrl = manga.thumbnail_url,
+                favorite = manga.favorite,
+                lastUpdate = manga.last_update,
+                nextUpdate = 0L,
+                initialized = manga.initialized,
+                viewerFlags = manga.viewer_flags.toLong(),
+                chapterFlags = manga.chapter_flags.toLong(),
+                coverLastModified = manga.cover_last_modified,
+                dateAdded = manga.date_added,
+            )
+            mangasQueries.selectLastInsertedRowId()
+        }
+    }
+
+    internal suspend fun updateManga(manga: Manga): Long {
+        handler.await(true) {
+            mangasQueries.update(
+                source = manga.source,
+                url = manga.url,
+                artist = manga.artist,
+                author = manga.author,
+                description = manga.description,
+                genre = manga.genre,
+                title = manga.title,
+                status = manga.status.toLong(),
+                thumbnailUrl = manga.thumbnail_url,
+                favorite = manga.favorite.toLong(),
+                lastUpdate = manga.last_update,
+                initialized = manga.initialized.toLong(),
+                viewer = manga.viewer_flags.toLong(),
+                chapterFlags = manga.chapter_flags.toLong(),
+                coverLastModified = manga.cover_last_modified,
+                dateAdded = manga.date_added,
+                mangaId = manga.id!!,
+                filteredScanlators = manga.filtered_scanlators,
+            )
+        }
+        return manga.id!!
+    }
 
     /**
      * Inserts list of chapters
      */
-    protected fun insertChapters(chapters: List<Chapter>) {
-        databaseHelper.insertChapters(chapters).executeAsBlocking()
+    protected suspend fun insertChapters(chapters: List<Chapter>) {
+        handler.await(true) {
+            chapters.forEach { chapter ->
+                chaptersQueries.insert(
+                    chapter.manga_id!!,
+                    chapter.url,
+                    chapter.name,
+                    chapter.scanlator,
+                    chapter.read,
+                    chapter.bookmark,
+                    chapter.last_page_read.toLong(),
+                    chapter.chapter_number,
+                    chapter.source_order.toLong(),
+                    chapter.date_fetch,
+                    chapter.date_upload,
+                )
+            }
+        }
     }
 
     /**
      * Updates a list of chapters
      */
-    protected fun updateChapters(chapters: List<Chapter>) {
-        databaseHelper.updateChaptersBackup(chapters).executeAsBlocking()
+    protected suspend fun updateChapters(chapters: List<Chapter>) {
+        handler.await(true) {
+            chapters.forEach { chapter ->
+                chaptersQueries.update(
+                    chapter.manga_id!!,
+                    chapter.url,
+                    chapter.name,
+                    chapter.scanlator,
+                    chapter.read.toLong(),
+                    chapter.bookmark.toLong(),
+                    chapter.last_page_read.toLong(),
+                    chapter.chapter_number.toDouble(),
+                    chapter.source_order.toLong(),
+                    chapter.date_fetch,
+                    chapter.date_upload,
+                    chapter.id!!,
+                )
+            }
+        }
     }
 
     /**
      * Updates a list of chapters with known database ids
      */
-    protected fun updateKnownChapters(chapters: List<Chapter>) {
-        databaseHelper.updateKnownChaptersBackup(chapters).executeAsBlocking()
+    protected suspend fun updateKnownChapters(chapters: List<Chapter>) {
+        handler.await(true) {
+            chapters.forEach { chapter ->
+                chaptersQueries.update(
+                    mangaId = null,
+                    url = null,
+                    name = null,
+                    scanlator = null,
+                    read = chapter.read.toLong(),
+                    bookmark = chapter.bookmark.toLong(),
+                    lastPageRead = chapter.last_page_read.toLong(),
+                    chapterNumber = null,
+                    sourceOrder = null,
+                    dateFetch = null,
+                    dateUpload = null,
+                    chapterId = chapter.id!!,
+                )
+            }
+        }
     }
 
     /**

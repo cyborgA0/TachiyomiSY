@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.source.online.all
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import androidx.compose.runtime.Composable
 import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.toSManga
@@ -10,12 +11,12 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.NamespaceSource
 import eu.kanade.tachiyomi.source.online.UrlImportableSource
-import eu.kanade.tachiyomi.ui.manga.MangaController
+import eu.kanade.tachiyomi.ui.manga.MangaScreenState
 import exh.metadata.metadata.NHentaiSearchMetadata
 import exh.metadata.metadata.base.RaisedSearchMetadata
 import exh.metadata.metadata.base.RaisedTag
 import exh.source.DelegatedHttpSource
-import exh.ui.metadata.adapters.NHentaiDescriptionAdapter
+import exh.ui.metadata.adapters.NHentaiDescription
 import exh.util.trimOrNull
 import exh.util.urlImportFetchSearchManga
 import kotlinx.serialization.SerialName
@@ -31,7 +32,7 @@ class NHentai(delegate: HttpSource, val context: Context) :
     UrlImportableSource,
     NamespaceSource {
     override val metaClass = NHentaiSearchMetadata::class
-    override val lang = if (id == otherId) "all" else delegate.lang
+    override val lang = delegate.lang
 
     private val sourcePreferences: SharedPreferences by lazy {
         context.getSharedPreferences("source_$id", 0x0000)
@@ -56,7 +57,7 @@ class NHentai(delegate: HttpSource, val context: Context) :
 
     override suspend fun parseIntoMetadata(metadata: NHentaiSearchMetadata, input: Response) {
         val json = GALLERY_JSON_REGEX.find(input.body?.string().orEmpty())!!.groupValues[1].replace(
-            UNICODE_ESCAPE_REGEX
+            UNICODE_ESCAPE_REGEX,
         ) { it.groupValues[1].toInt(radix = 16).toChar().toString() }
         val jsonResponse = jsonParser.decodeFromString<JsonResponse>(json)
 
@@ -100,7 +101,7 @@ class NHentai(delegate: HttpSource, val context: Context) :
                         RaisedSearchMetadata.TAG_TYPE_VIRTUAL
                     } else {
                         NHentaiSearchMetadata.TAG_TYPE_DEFAULT
-                    }
+                    },
                 )
             }
         }
@@ -120,21 +121,21 @@ class NHentai(delegate: HttpSource, val context: Context) :
         @SerialName("num_pages")
         val numPages: Int? = null,
         @SerialName("num_favorites")
-        val numFavorites: Long? = null
+        val numFavorites: Long? = null,
     )
 
     @Serializable
     data class JsonTitle(
         val english: String? = null,
         val japanese: String? = null,
-        val pretty: String? = null
+        val pretty: String? = null,
     )
 
     @Serializable
     data class JsonImages(
         val pages: List<JsonPage> = emptyList(),
         val cover: JsonPage? = null,
-        val thumbnail: JsonPage? = null
+        val thumbnail: JsonPage? = null,
     )
 
     @Serializable
@@ -144,7 +145,7 @@ class NHentai(delegate: HttpSource, val context: Context) :
         @SerialName("w")
         val width: Long? = null,
         @SerialName("h")
-        val height: Long? = null
+        val height: Long? = null,
     )
 
     @Serializable
@@ -153,19 +154,11 @@ class NHentai(delegate: HttpSource, val context: Context) :
         val type: String? = null,
         val name: String? = null,
         val url: String? = null,
-        val count: Long? = null
+        val count: Long? = null,
     )
 
-    override fun toString() = "$name (${lang.uppercase()})"
-
-    override fun ensureDelegateCompatible() {
-        if (versionId != delegate.versionId) {
-            throw IncompatibleDelegateException("Delegate source is not compatible (versionId: $versionId <=> ${delegate.versionId})!")
-        }
-    }
-
     override val matchingHosts = listOf(
-        "nhentai.net"
+        "nhentai.net",
     )
 
     override suspend fun mapUrlToMangaUrl(uri: Uri): String? {
@@ -176,8 +169,9 @@ class NHentai(delegate: HttpSource, val context: Context) :
         return "$baseUrl/g/${uri.pathSegments[1]}/"
     }
 
-    override fun getDescriptionAdapter(controller: MangaController): NHentaiDescriptionAdapter {
-        return NHentaiDescriptionAdapter(controller)
+    @Composable
+    override fun DescriptionComposable(state: MangaScreenState.Success, openMetadataViewer: () -> Unit, search: (String) -> Unit) {
+        NHentaiDescription(state, openMetadataViewer)
     }
 
     companion object {

@@ -9,42 +9,47 @@ import android.view.MenuItem
 import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.ActionMode
 import androidx.core.view.isVisible
 import com.bluelinelabs.conductor.ControllerChangeHandler
 import com.bluelinelabs.conductor.ControllerChangeType
+import com.fredporciuncula.flow.preferences.Preference
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayout
 import com.jakewharton.rxrelay.BehaviorRelay
 import com.jakewharton.rxrelay.PublishRelay
-import com.tfcporciuncula.flow.Preference
-import dev.chrisbanes.insetter.applyInsetter
 import eu.davidea.flexibleadapter.SelectableAdapter
+import eu.kanade.domain.category.model.Category
+import eu.kanade.domain.category.model.toDbCategory
+import eu.kanade.domain.manga.model.Manga
+import eu.kanade.domain.manga.model.toDbManga
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.models.Category
-import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.library.LibraryUpdateService
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
-import eu.kanade.tachiyomi.data.preference.asImmediateFlow
+import eu.kanade.tachiyomi.data.track.TrackManager
 import eu.kanade.tachiyomi.databinding.LibraryControllerBinding
 import eu.kanade.tachiyomi.source.LocalSource
 import eu.kanade.tachiyomi.ui.base.controller.RootController
 import eu.kanade.tachiyomi.ui.base.controller.SearchableNucleusController
 import eu.kanade.tachiyomi.ui.base.controller.TabbedController
-import eu.kanade.tachiyomi.ui.base.controller.withFadeTransaction
+import eu.kanade.tachiyomi.ui.base.controller.pushController
 import eu.kanade.tachiyomi.ui.browse.migration.advanced.design.PreMigrationController
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchController
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.manga.MangaController
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import eu.kanade.tachiyomi.util.lang.launchIO
+import eu.kanade.tachiyomi.util.lang.launchUI
+import eu.kanade.tachiyomi.util.preference.asImmediateFlow
 import eu.kanade.tachiyomi.util.system.getResourceColor
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toast
+import eu.kanade.tachiyomi.widget.ActionModeWithToolbar
 import eu.kanade.tachiyomi.widget.EmptyView
 import eu.kanade.tachiyomi.widget.materialdialogs.QuadStateTextView
 import exh.favorites.FavoritesIntroDialog
 import exh.favorites.FavoritesSyncStatus
+import exh.source.EH_SOURCE_ID
 import exh.source.MERGED_SOURCE_ID
 import exh.source.PERV_EDEN_EN_SOURCE_ID
 import exh.source.PERV_EDEN_IT_SOURCE_ID
@@ -52,9 +57,8 @@ import exh.source.isEhBasedManga
 import exh.source.mangaDexSourceIds
 import exh.source.nHentaiSourceIds
 import exh.ui.LoaderManager
-import exh.util.milliseconds
-import exh.util.seconds
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
@@ -69,14 +73,17 @@ import rx.android.schedulers.AndroidSchedulers
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 class LibraryController(
     bundle: Bundle? = null,
-    private val preferences: PreferencesHelper = Injekt.get()
+    private val preferences: PreferencesHelper = Injekt.get(),
+    private val trackManager: TrackManager = Injekt.get(),
 ) : SearchableNucleusController<LibraryControllerBinding, LibraryPresenter>(bundle),
     RootController,
     TabbedController,
-    ActionMode.Callback,
+    ActionModeWithToolbar.Callback,
     ChangeMangaCategoriesDialog.Listener,
     DeleteLibraryMangasDialog.Listener {
 
@@ -88,7 +95,7 @@ class LibraryController(
     /**
      * Action mode for selections.
      */
-    private var actionMode: ActionMode? = null
+    private var actionMode: ActionModeWithToolbar? = null
 
     /**
      * Currently selected mangas.
@@ -113,12 +120,12 @@ class LibraryController(
     /**
      * Relay to notify the library's viewpager to select all manga
      */
-    val selectAllRelay: PublishRelay<Int> = PublishRelay.create()
+    val selectAllRelay: PublishRelay<Long> = PublishRelay.create()
 
     /**
      * Relay to notify the library's viewpager to select the inverse
      */
-    val selectInverseRelay: PublishRelay<Int> = PublishRelay.create()
+    val selectInverseRelay: PublishRelay<Long> = PublishRelay.create()
 
     /**
      * Number of manga per row in grid mode.
@@ -203,12 +210,6 @@ class LibraryController(
     override fun onViewCreated(view: View) {
         super.onViewCreated(view)
 
-        binding.actionToolbar.applyInsetter {
-            type(navigationBars = true) {
-                margin(bottom = true, horizontal = true)
-            }
-        }
-
         adapter = LibraryAdapter(this)
         binding.libraryPager.adapter = adapter
         binding.libraryPager.pageSelections()
@@ -235,7 +236,7 @@ class LibraryController(
                 is LibrarySettingsSheet.Filter.FilterGroup -> onFilterChanged()
                 is LibrarySettingsSheet.Sort.SortGroup -> onSortChanged()
                 is LibrarySettingsSheet.Display.DisplayGroup -> {
-                    val delay = if (preferences.categorisedDisplaySettings().get()) 125L else 0L
+                    val delay = if (preferences.categorizedDisplaySettings().get()) 125L else 0L
 
                     Observable.timer(delay, TimeUnit.MILLISECONDS, AndroidSchedulers.mainThread())
                         .subscribe {
@@ -255,9 +256,7 @@ class LibraryController(
 
         binding.btnGlobalSearch.clicks()
             .onEach {
-                router.pushController(
-                    GlobalSearchController(presenter.query).withFadeTransaction()
-                )
+                router.pushController(GlobalSearchController(presenter.query))
             }
             .launchIn(viewScope)
     }
@@ -272,17 +271,18 @@ class LibraryController(
 
     override fun onDestroyView(view: View) {
         destroyActionModeIfNeeded()
-        binding.actionToolbar.destroy()
         adapter?.onDestroy()
         adapter = null
+        settingsSheet?.sheetScope?.cancel()
         settingsSheet = null
         tabsVisibilitySubscription?.unsubscribe()
         tabsVisibilitySubscription = null
         super.onDestroyView(view)
     }
 
-    override fun configureTabs(tabs: TabLayout) {
+    override fun configureTabs(tabs: TabLayout): Boolean {
         with(tabs) {
+            isVisible = false
             tabGravity = TabLayout.GRAVITY_START
             tabMode = TabLayout.MODE_SCROLLABLE
         }
@@ -294,6 +294,8 @@ class LibraryController(
         mangaCountVisibilitySubscription = mangaCountVisibilityRelay.subscribe {
             adapter?.notifyDataSetChanged()
         }
+
+        return false
     }
 
     override fun cleanupTabs(tabs: TabLayout) {
@@ -304,14 +306,14 @@ class LibraryController(
     fun showSettingsSheet() {
         if (adapter?.categories?.isNotEmpty() == true) {
             adapter?.categories?.getOrNull(binding.libraryPager.currentItem)?.let { category ->
-                settingsSheet?.show(category)
+                settingsSheet?.show(category.toDbCategory())
             }
         } else {
             settingsSheet?.show()
         }
     }
 
-    fun onNextLibraryUpdate(categories: List<Category>, mangaMap: Map<Int, List<LibraryItem>>) {
+    fun onNextLibraryUpdate(categories: List<Category>, mangaMap: LibraryMap) {
         val view = view ?: return
         val adapter = adapter ?: return
 
@@ -324,7 +326,7 @@ class LibraryController(
                 listOf(
                     EmptyView.Action(R.string.getting_started_guide, R.drawable.ic_help_24dp) {
                         activity?.openInBrowser("https://tachiyomi.org/help/guides/getting-started")
-                    }
+                    },
                 ),
             )
             (activity as? MainActivity)?.ready = true
@@ -338,16 +340,13 @@ class LibraryController(
         }
 
         // Set the categories
-        adapter.categories = categories
-        adapter.itemsPerCategory = adapter.categories
-            .map { (it.id ?: -1) to (mangaMap[it.id]?.size ?: 0) }
-            .toMap()
+        adapter.updateCategories(categories.map { it to (mangaMap[it.id]?.size ?: 0) })
 
         // Restore active category.
         binding.libraryPager.setCurrentItem(activeCat, false)
 
         // Trigger display of tabs
-        onTabsSettingsChanged()
+        onTabsSettingsChanged(firstLaunch = true)
 
         // Delay the scroll position to allow the view to be properly measured.
         view.post {
@@ -395,9 +394,11 @@ class LibraryController(
     }
     // SY <--
 
-    private fun onTabsSettingsChanged() {
-        tabsVisibilityRelay.call(preferences.categoryTabs().get() && adapter?.categories?.size ?: 0 > 1)
-        mangaCountVisibilityRelay.call(preferences.categoryNumberOfItems().get())
+    private fun onTabsSettingsChanged(firstLaunch: Boolean = false) {
+        if (!firstLaunch) {
+            mangaCountVisibilityRelay.call(preferences.categoryNumberOfItems().get())
+        }
+        tabsVisibilityRelay.call(preferences.categoryTabs().get() && (adapter?.categories?.size ?: 0) > 1)
         updateTitle()
     }
 
@@ -429,13 +430,10 @@ class LibraryController(
      * Creates the action mode if it's not created already.
      */
     fun createActionModeIfNeeded() {
-        if (actionMode == null) {
-            actionMode = (activity as AppCompatActivity).startSupportActionMode(this)
-            binding.actionToolbar.show(
-                actionMode!!,
-                R.menu.library_selection
-            ) { onActionItemClicked(it!!) }
-            (activity as? MainActivity)?.showBottomNav(false)
+        val activity = activity
+        if (actionMode == null && activity is MainActivity) {
+            actionMode = activity.startActionModeAndToolbar(this)
+            activity.showBottomNav(false)
         }
     }
 
@@ -449,10 +447,13 @@ class LibraryController(
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         createOptionsMenu(menu, inflater, R.menu.library, R.id.action_search)
         // Mutate the filter icon because it needs to be tinted and the resource is shared.
-        menu.findItem(R.id.action_filter).icon.mutate()
+        menu.findItem(R.id.action_filter).icon?.mutate()
 
         // SY -->
-        menu.findItem(R.id.action_sync_favorites).isVisible = preferences.isHentaiEnabled().get()
+        val hentaiEnabled = preferences.isHentaiEnabled().get()
+        val ehEnabled = EH_SOURCE_ID.toString() !in preferences.disabledSources().get()
+        val exhEnabled = preferences.enableExhentai().get()
+        menu.findItem(R.id.action_sync_favorites).isVisible = hentaiEnabled && (ehEnabled || exhEnabled)
         // SY <--
     }
 
@@ -479,7 +480,7 @@ class LibraryController(
         // Tint icon if there's a filter active
         if (settingsSheet.filters.hasActiveFilters()) {
             val filterColor = activity!!.getResourceColor(R.attr.colorFilterActive)
-            filterItem.icon.setTint(filterColor)
+            filterItem.icon?.setTint(filterColor)
         }
     }
 
@@ -499,7 +500,14 @@ class LibraryController(
                 if (preferences.exhShowSyncIntro().get()) {
                     activity?.let { FavoritesIntroDialog().show(it) }
                 } else {
-                    presenter.favoritesSync.runSync()
+                    MaterialAlertDialogBuilder(activity!!)
+                        .setTitle(R.string.favorites_sync)
+                        .setMessage(R.string.favorites_sync_conformation_message)
+                        .setPositiveButton(android.R.string.ok) { _, _ ->
+                            presenter.favoritesSync.runSync()
+                        }
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show()
                 }
             }
             // SY <--
@@ -520,6 +528,10 @@ class LibraryController(
         return true
     }
 
+    override fun onCreateActionToolbar(menuInflater: MenuInflater, menu: Menu) {
+        menuInflater.inflate(R.menu.library_selection, menu)
+    }
+
     override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
         val count = selectedMangas.size
         if (count == 0) {
@@ -527,31 +539,30 @@ class LibraryController(
             destroyActionModeIfNeeded()
         } else {
             mode.title = count.toString()
-
-            binding.actionToolbar.findItem(R.id.action_download_unread)?.isVisible = selectedMangas.any { it.source != LocalSource.ID }
-
-            // SY -->
-            binding.actionToolbar.findItem(R.id.action_clean)?.isVisible = selectedMangas.any {
-                it.isEhBasedManga() ||
-                    it.source in nHentaiSourceIds ||
-                    it.source == PERV_EDEN_EN_SOURCE_ID ||
-                    it.source == PERV_EDEN_IT_SOURCE_ID
-            }
-            binding.actionToolbar.findItem(R.id.action_push_to_mdlist)?.isVisible = selectedMangas.any {
-                it.source in mangaDexSourceIds
-            }
-            // SY <--
         }
-        return false
+        return true
+    }
+
+    override fun onPrepareActionToolbar(toolbar: ActionModeWithToolbar, menu: Menu) {
+        if (selectedMangas.isEmpty()) return
+        toolbar.findToolbarItem(R.id.action_download_unread)?.isVisible =
+            selectedMangas.any { it.source != LocalSource.ID }
+        // SY -->
+        toolbar.findToolbarItem(R.id.action_clean)?.isVisible = selectedMangas.any {
+            it.isEhBasedManga() ||
+                it.source in nHentaiSourceIds ||
+                it.source == PERV_EDEN_EN_SOURCE_ID ||
+                it.source == PERV_EDEN_IT_SOURCE_ID
+        }
+        toolbar.findToolbarItem(R.id.action_push_to_mdlist)?.isVisible = trackManager.mdList.isLogged && selectedMangas.any {
+            it.source in mangaDexSourceIds
+        }
+        // SY <--
     }
 
     override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-        return onActionItemClicked(item)
-    }
-
-    private fun onActionItemClicked(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.action_move_to_category -> showChangeMangaCategoriesDialog()
+            R.id.action_move_to_category -> showMangaCategoriesDialog()
             R.id.action_download_unread -> downloadUnreadChapters()
             R.id.action_mark_as_read -> markReadStatus(true)
             R.id.action_mark_as_unread -> markReadStatus(false)
@@ -577,12 +588,11 @@ class LibraryController(
         return true
     }
 
-    override fun onDestroyActionMode(mode: ActionMode?) {
+    override fun onDestroyActionMode(mode: ActionMode) {
         // Clear all the manga selections and notify child views.
         selectedMangas.clear()
-        selectionRelay.call(LibrarySelectionEvent.Cleared())
+        selectionRelay.call(LibrarySelectionEvent.Cleared)
 
-        binding.actionToolbar.hide()
         (activity as? MainActivity)?.showBottomNav(true)
 
         actionMode = null
@@ -592,7 +602,7 @@ class LibraryController(
         // Notify the presenter a manga is being opened.
         presenter.onOpenManga()
 
-        router.pushController(MangaController(manga).withFadeTransaction())
+        router.pushController(MangaController(manga.id))
     }
 
     /**
@@ -632,33 +642,37 @@ class LibraryController(
      */
     fun clearSelection() {
         selectedMangas.clear()
-        selectionRelay.call(LibrarySelectionEvent.Cleared())
+        selectionRelay.call(LibrarySelectionEvent.Cleared)
         invalidateActionMode()
     }
 
     /**
      * Move the selected manga to a list of categories.
      */
-    private fun showChangeMangaCategoriesDialog() {
-        // Create a copy of selected manga
-        val mangas = selectedMangas.toList()
+    private fun showMangaCategoriesDialog() {
+        viewScope.launchIO {
+            // Create a copy of selected manga
+            val mangas = selectedMangas.toList()
 
-        // Hide the default category because it has a different behavior than the ones from db.
-        val categories = presenter.categories.filter { it.id != 0 }
+            // Hide the default category because it has a different behavior than the ones from db.
+            val categories = presenter.categories.filter { it.id != 0L }
 
-        // Get indexes of the common categories to preselect.
-        val common = presenter.getCommonCategories(mangas)
-        // Get indexes of the mix categories to preselect.
-        val mix = presenter.getMixCategories(mangas)
-        var preselected = categories.map {
-            when (it) {
-                in common -> QuadStateTextView.State.CHECKED.ordinal
-                in mix -> QuadStateTextView.State.INDETERMINATE.ordinal
-                else -> QuadStateTextView.State.UNCHECKED.ordinal
+            // Get indexes of the common categories to preselect.
+            val common = presenter.getCommonCategories(mangas)
+            // Get indexes of the mix categories to preselect.
+            val mix = presenter.getMixCategories(mangas)
+            val preselected = categories.map {
+                when (it) {
+                    in common -> QuadStateTextView.State.CHECKED.ordinal
+                    in mix -> QuadStateTextView.State.INDETERMINATE.ordinal
+                    else -> QuadStateTextView.State.UNCHECKED.ordinal
+                }
+            }.toTypedArray()
+            launchUI {
+                ChangeMangaCategoriesDialog(this@LibraryController, mangas, categories, preselected)
+                    .showDialog(router)
             }
-        }.toTypedArray()
-        ChangeMangaCategoriesDialog(this, mangas, categories, preselected)
-            .showDialog(router)
+        }
     }
 
     private fun downloadUnreadChapters() {
@@ -698,12 +712,12 @@ class LibraryController(
     // SY <--
 
     override fun updateCategoriesForMangas(mangas: List<Manga>, addCategories: List<Category>, removeCategories: List<Category>) {
-        presenter.updateMangasToCategories(mangas, addCategories, removeCategories)
+        presenter.setMangaCategories(mangas, addCategories, removeCategories)
         destroyActionModeIfNeeded()
     }
 
     override fun deleteMangas(mangas: List<Manga>, deleteFromLibrary: Boolean, deleteChapters: Boolean) {
-        presenter.removeMangas(mangas, deleteFromLibrary, deleteChapters)
+        presenter.removeMangas(mangas.map { it.toDbManga() }, deleteFromLibrary, deleteChapters)
         destroyActionModeIfNeeded()
     }
 
@@ -840,7 +854,8 @@ class LibraryController(
                 favSyncDialog?.show()
             }
             is FavoritesSyncStatus.Processing,
-            is FavoritesSyncStatus.Initializing -> {
+            is FavoritesSyncStatus.Initializing,
+            -> {
                 takeSyncLocks()
 
                 if (favSyncDialog == null || (
@@ -869,7 +884,7 @@ class LibraryController(
         }
         val activity = activity ?: return
         val chapter = presenter.getFirstUnread(manga) ?: return
-        val intent = ReaderActivity.newIntent(activity, manga, chapter)
+        val intent = ReaderActivity.newIntent(activity, manga.id, chapter.id)
         destroyActionModeIfNeeded()
         startActivity(intent)
     }

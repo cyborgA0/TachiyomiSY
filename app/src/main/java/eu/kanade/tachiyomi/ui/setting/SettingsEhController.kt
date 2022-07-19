@@ -12,20 +12,21 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.core.widget.doAfterTextChanged
 import androidx.preference.PreferenceScreen
+import com.fredporciuncula.flow.preferences.Preference
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.tfcporciuncula.flow.Preference
+import eu.kanade.domain.manga.interactor.DeleteFavoriteEntries
+import eu.kanade.domain.manga.interactor.GetExhFavoriteMangaWithMetadata
+import eu.kanade.domain.manga.interactor.GetFlatMetadataById
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
-import eu.kanade.tachiyomi.data.database.models.Manga
-import eu.kanade.tachiyomi.data.preference.CHARGING
-import eu.kanade.tachiyomi.data.preference.PreferenceKeys
-import eu.kanade.tachiyomi.data.preference.UNMETERED_NETWORK
-import eu.kanade.tachiyomi.data.preference.asImmediateFlow
+import eu.kanade.tachiyomi.data.preference.DEVICE_CHARGING
+import eu.kanade.tachiyomi.data.preference.DEVICE_ONLY_ON_WIFI
 import eu.kanade.tachiyomi.databinding.DialogStubTextinputBinding
 import eu.kanade.tachiyomi.ui.setting.eh.FrontPageCategoriesDialog
 import eu.kanade.tachiyomi.ui.setting.eh.LanguagesDialog
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
-import eu.kanade.tachiyomi.util.preference.defaultValue
+import eu.kanade.tachiyomi.util.lang.launchIO
+import eu.kanade.tachiyomi.util.lang.withUIContext
+import eu.kanade.tachiyomi.util.preference.bindTo
 import eu.kanade.tachiyomi.util.preference.entriesRes
 import eu.kanade.tachiyomi.util.preference.intListPreference
 import eu.kanade.tachiyomi.util.preference.listPreference
@@ -42,21 +43,11 @@ import exh.eh.EHentaiUpdateWorker
 import exh.eh.EHentaiUpdateWorkerConstants
 import exh.eh.EHentaiUpdaterStats
 import exh.favorites.FavoritesIntroDialog
-import exh.favorites.LocalFavoritesStorage
 import exh.log.xLogD
 import exh.metadata.metadata.EHentaiSearchMetadata
-import exh.metadata.metadata.base.getFlatMetadataForManga
-import exh.source.isEhBasedManga
 import exh.uconfig.WarnConfigureDialogController
 import exh.ui.login.EhLoginActivity
-import exh.util.days
-import exh.util.executeOnIO
-import exh.util.hours
-import exh.util.milliseconds
-import exh.util.minutes
 import exh.util.nullIfBlank
-import exh.util.seconds
-import exh.util.trans
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -67,13 +58,20 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import uy.kohesive.injekt.injectLazy
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * EH Settings fragment
  */
 
 class SettingsEhController : SettingsController() {
-    private val db: DatabaseHelper by injectLazy()
+    private val getFlatMetadataById: GetFlatMetadataById by injectLazy()
+    private val deleteFavoriteEntries: DeleteFavoriteEntries by injectLazy()
+    private val getExhFavoriteMangaWithMetadata: GetExhFavoriteMangaWithMetadata by injectLazy()
 
     fun Preference<*>.reconfigure(): Boolean {
         // Listen for change commit
@@ -96,11 +94,10 @@ class SettingsEhController : SettingsController() {
             titleRes = R.string.ehentai_prefs_account_settings
 
             switchPreference {
+                bindTo(preferences.enableExhentai())
                 titleRes = R.string.enable_exhentai
                 summaryOff = context.getString(R.string.requires_login)
-                key = PreferenceKeys.eh_enableExHentai
                 isPersistent = false
-                defaultValue = false
                 preferences.enableExhentai()
                     .asFlow()
                     .onEach {
@@ -121,46 +118,40 @@ class SettingsEhController : SettingsController() {
             }
 
             intListPreference {
+                bindTo(preferences.useHentaiAtHome())
                 titleRes = R.string.use_hentai_at_home
-
-                key = PreferenceKeys.eh_enable_hah
                 summaryRes = R.string.use_hentai_at_home_summary
                 entriesRes = arrayOf(
                     R.string.use_hentai_at_home_option_1,
-                    R.string.use_hentai_at_home_option_2
+                    R.string.use_hentai_at_home_option_2,
                 )
                 entryValues = arrayOf("0", "1")
 
                 onChange { preferences.useHentaiAtHome().reconfigure() }
 
-                preferences.enableExhentai().asImmediateFlow { isVisible = it }
-                    .launchIn(viewScope)
+                visibleIf(preferences.enableExhentai()) { it }
             }
 
             switchPreference {
+                bindTo(preferences.useJapaneseTitle())
                 titleRes = R.string.show_japanese_titles
                 summaryOn = context.getString(R.string.show_japanese_titles_option_1)
                 summaryOff = context.getString(R.string.show_japanese_titles_option_2)
-                key = "use_jp_title"
-                defaultValue = false
 
                 onChange { preferences.useJapaneseTitle().reconfigure() }
 
-                preferences.enableExhentai().asImmediateFlow { isVisible = it }
-                    .launchIn(viewScope)
+                visibleIf(preferences.enableExhentai()) { it }
             }
 
             switchPreference {
+                bindTo(preferences.exhUseOriginalImages())
                 titleRes = R.string.use_original_images
                 summaryOn = context.getString(R.string.use_original_images_on)
                 summaryOff = context.getString(R.string.use_original_images_off)
-                key = PreferenceKeys.eh_useOrigImages
-                defaultValue = false
 
                 onChange { preferences.exhUseOriginalImages().reconfigure() }
 
-                preferences.enableExhentai().asImmediateFlow { isVisible = it }
-                    .launchIn(viewScope)
+                visibleIf(preferences.enableExhentai()) { it }
             }
 
             preference {
@@ -176,15 +167,12 @@ class SettingsEhController : SettingsController() {
                     startActivity(intent)
                 }
 
-                preferences.enableExhentai().asImmediateFlow { isVisible = it }
-                    .launchIn(viewScope)
+                visibleIf(preferences.enableExhentai()) { it }
             }
 
             preference {
+                bindTo(preferences.ehTagFilterValue())
                 titleRes = R.string.tag_filtering_threshold
-                key = PreferenceKeys.eh_tag_filtering_value
-                defaultValue = 0
-
                 summary = context.getString(R.string.tag_filtering_threshhold_summary, preferences.ehTagFilterValue().get())
 
                 onClick {
@@ -221,15 +209,12 @@ class SettingsEhController : SettingsController() {
                         .show()
                 }
 
-                preferences.enableExhentai().asImmediateFlow { isVisible = it }
-                    .launchIn(viewScope)
+                visibleIf(preferences.enableExhentai()) { it }
             }
 
             preference {
+                bindTo(preferences.ehTagWatchingValue())
                 titleRes = R.string.tag_watching_threshhold
-                key = PreferenceKeys.eh_tag_watching_value
-                defaultValue = 0
-
                 summary = context.getString(R.string.tag_watching_threshhold_summary, preferences.ehTagWatchingValue().get())
 
                 onClick {
@@ -267,12 +252,11 @@ class SettingsEhController : SettingsController() {
                         .show()
                 }
 
-                preferences.enableExhentai().asImmediateFlow { isVisible = it }
-                    .launchIn(viewScope)
+                visibleIf(preferences.enableExhentai()) { it }
             }
 
             preference {
-                key = PreferenceKeys.eh_settings_languages
+                bindTo(preferences.exhSettingsLanguages())
                 titleRes = R.string.language_filtering
                 summaryRes = R.string.language_filtering_summary
 
@@ -282,12 +266,11 @@ class SettingsEhController : SettingsController() {
                     dialog.showDialog(router)
                 }
 
-                preferences.enableExhentai().asImmediateFlow { isVisible = it }
-                    .launchIn(viewScope)
+                visibleIf(preferences.enableExhentai()) { it }
             }
 
             preference {
-                key = PreferenceKeys.eh_enabled_categories
+                bindTo(preferences.exhEnabledCategories())
                 titleRes = R.string.frong_page_categories
                 summaryRes = R.string.fromt_page_categories_summary
 
@@ -297,23 +280,19 @@ class SettingsEhController : SettingsController() {
                     dialog.showDialog(router)
                 }
 
-                preferences.enableExhentai().asImmediateFlow { isVisible = it }
-                    .launchIn(viewScope)
+                visibleIf(preferences.enableExhentai()) { it }
             }
 
             switchPreference {
-                defaultValue = false
-                key = PreferenceKeys.eh_watched_list_default_state
+                bindTo(preferences.exhWatchedListDefaultState())
                 titleRes = R.string.watched_list_default
                 summaryRes = R.string.watched_list_state_summary
 
-                preferences.enableExhentai().asImmediateFlow { isVisible = it }
-                    .launchIn(viewScope)
+                visibleIf(preferences.enableExhentai()) { it }
             }
 
             listPreference {
-                defaultValue = "auto"
-                key = PreferenceKeys.eh_ehentai_quality
+                bindTo(preferences.imageQuality())
                 summaryRes = R.string.eh_image_quality_summary
                 titleRes = R.string.eh_image_quality
                 entriesRes = arrayOf(
@@ -322,7 +301,7 @@ class SettingsEhController : SettingsController() {
                     R.string.eh_image_quality_1600,
                     R.string.eh_image_quality_1280,
                     R.string.eh_image_quality_980,
-                    R.string.eh_image_quality_780
+                    R.string.eh_image_quality_780,
                 )
                 entryValues = arrayOf(
                     "auto",
@@ -330,20 +309,18 @@ class SettingsEhController : SettingsController() {
                     "ovrs_1600",
                     "high",
                     "med",
-                    "low"
+                    "low",
                 )
 
                 onChange { preferences.imageQuality().reconfigure() }
 
-                preferences.enableExhentai().asImmediateFlow { isVisible = it }
-                    .launchIn(viewScope)
+                visibleIf(preferences.enableExhentai()) { it }
             }
 
             switchPreference {
+                bindTo(preferences.enhancedEHentaiView())
                 titleRes = R.string.pref_enhanced_e_hentai_view
                 summaryRes = R.string.pref_enhanced_e_hentai_view_summary
-                key = PreferenceKeys.enhancedEHentaiView
-                defaultValue = true
             }
         }
 
@@ -351,10 +328,9 @@ class SettingsEhController : SettingsController() {
             titleRes = R.string.favorites_sync
 
             switchPreference {
+                bindTo(preferences.exhReadOnlySync())
                 titleRes = R.string.disable_favorites_uploading
                 summaryRes = R.string.disable_favorites_uploading_summary
-                key = PreferenceKeys.eh_readOnlySync
-                defaultValue = false
             }
 
             preference {
@@ -370,10 +346,9 @@ class SettingsEhController : SettingsController() {
             }
 
             switchPreference {
+                bindTo(preferences.exhLenientSync())
                 titleRes = R.string.ignore_sync_errors
                 summaryRes = R.string.ignore_sync_errors_summary
-                key = PreferenceKeys.eh_lenientSync
-                defaultValue = false
             }
 
             preference {
@@ -387,14 +362,12 @@ class SettingsEhController : SettingsController() {
                             .setTitle(R.string.favorites_sync_reset)
                             .setMessage(R.string.favorites_sync_reset_message)
                             .setPositiveButton(android.R.string.ok) { _, _ ->
-                                LocalFavoritesStorage().apply {
-                                    getRealm().use {
-                                        it.trans {
-                                            clearSnapshots(it)
-                                        }
+                                launchIO {
+                                    deleteFavoriteEntries.await()
+                                    withUIContext {
+                                        activity.toast(context.getString(R.string.sync_state_reset), Toast.LENGTH_LONG)
                                     }
                                 }
-                                activity.toast(context.getString(R.string.sync_state_reset), Toast.LENGTH_LONG)
                             }
                             .setNegativeButton(android.R.string.cancel, null)
                             .setCancelable(false)
@@ -408,7 +381,7 @@ class SettingsEhController : SettingsController() {
             titleRes = R.string.gallery_update_checker
 
             intListPreference {
-                key = PreferenceKeys.eh_autoUpdateFrequency
+                bindTo(preferences.exhAutoUpdateFrequency())
                 titleRes = R.string.time_between_batches
                 entriesRes = arrayOf(
                     R.string.time_between_batches_never,
@@ -418,10 +391,9 @@ class SettingsEhController : SettingsController() {
                     R.string.time_between_batches_6_hours,
                     R.string.time_between_batches_12_hours,
                     R.string.time_between_batches_24_hours,
-                    R.string.time_between_batches_48_hours
+                    R.string.time_between_batches_48_hours,
                 )
                 entryValues = arrayOf("0", "1", "2", "3", "6", "12", "24", "48")
-                defaultValue = "0"
 
                 preferences.exhAutoUpdateFrequency().asFlow()
                     .onEach { newVal ->
@@ -441,18 +413,18 @@ class SettingsEhController : SettingsController() {
             }
 
             multiSelectListPreference {
-                key = PreferenceKeys.eh_autoUpdateRestrictions
+                bindTo(preferences.exhAutoUpdateRequirements())
                 titleRes = R.string.auto_update_restrictions
-                entriesRes = arrayOf(R.string.network_unmetered, R.string.charging)
-                entryValues = arrayOf(UNMETERED_NETWORK, CHARGING)
+                entriesRes = arrayOf(R.string.connected_to_wifi, R.string.charging)
+                entryValues = arrayOf(DEVICE_ONLY_ON_WIFI, DEVICE_CHARGING)
 
                 fun updateSummary() {
                     val restrictions = preferences.exhAutoUpdateRequirements().get()
                         .sorted()
                         .map {
                             when (it) {
-                                UNMETERED_NETWORK -> context.getString(R.string.network_unmetered)
-                                CHARGING -> context.getString(R.string.charging)
+                                DEVICE_ONLY_ON_WIFI -> context.getString(R.string.connected_to_wifi)
+                                DEVICE_CHARGING -> context.getString(R.string.charging)
                                 else -> it
                             }
                         }
@@ -465,9 +437,7 @@ class SettingsEhController : SettingsController() {
                     summary = context.getString(R.string.restrictions, restrictionsText)
                 }
 
-                preferences.exhAutoUpdateFrequency().asFlow()
-                    .onEach { isVisible = it > 0 }
-                    .launchIn(viewScope)
+                visibleIf(preferences.exhAutoUpdateFrequency()) { it > 0 }
 
                 onChange {
                     // Post to event looper to allow the preference to be updated.
@@ -502,12 +472,11 @@ class SettingsEhController : SettingsController() {
                                 context.getString(R.string.gallery_updater_stats_text, getRelativeTimeString(getRelativeTimeFromNow(stats.startTime.milliseconds), context), stats.updateCount, stats.possibleUpdates)
                             } else context.getString(R.string.gallery_updater_not_ran_yet)
 
-                            val allMeta = db.getFavoriteMangaWithMetadata().executeOnIO()
-                                .filter(Manga::isEhBasedManga)
+                            val allMeta = getExhFavoriteMangaWithMetadata.await()
                                 .mapNotNull {
-                                    db.getFlatMetadataForManga(it.id!!).executeOnIO()
+                                    getFlatMetadataById.await(it.id)
                                         ?.raise<EHentaiSearchMetadata>()
-                                }.toList()
+                                }
 
                             fun metaInRelativeDuration(duration: Duration): Int {
                                 val durationMs = duration.inWholeMilliseconds
@@ -525,7 +494,7 @@ class SettingsEhController : SettingsController() {
                                 metaInRelativeDuration(2.days),
                                 metaInRelativeDuration(7.days),
                                 metaInRelativeDuration(30.days),
-                                metaInRelativeDuration(365.days)
+                                metaInRelativeDuration(365.days),
                             )
                         } finally {
                             progress.dismiss()
@@ -597,7 +566,7 @@ class SettingsEhController : SettingsController() {
                     period.inWholeMilliseconds.let {
                         relativeTime.milliseconds = it
                     }
-                    period = 0.milliseconds
+                    period = Duration.ZERO
                 }
             }
         }
@@ -623,7 +592,7 @@ class SettingsEhController : SettingsController() {
         var hours: Long? = null,
         var minutes: Long? = null,
         var seconds: Long? = null,
-        var milliseconds: Long? = null
+        var milliseconds: Long? = null,
     )
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

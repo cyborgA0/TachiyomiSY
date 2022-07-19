@@ -17,6 +17,7 @@ import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.databinding.EhActivityCaptchaBinding
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.parseAs
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -27,8 +28,6 @@ import exh.log.xLogE
 import exh.source.DelegatedHttpSource
 import exh.util.melt
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -156,14 +155,12 @@ class BrowserActionActivity : AppCompatActivity() {
                 Request.Builder()
                     // Rob demo credentials
                     .url("https://speech-to-text-demo.ng.bluemix.net/api/v1/credentials")
-                    .build()
+                    .build(),
             )
                 .asObservableSuccess()
                 .subscribeOn(Schedulers.io())
                 .map {
-                    val json = Json.decodeFromString<JsonObject>(it.body!!.string())
-                    it.close()
-                    json["token"]!!.jsonPrimitive.content
+                    it.parseAs<JsonObject>()["token"]!!.jsonPrimitive.content
                 }.melt()
 
             binding.webview.addJavascriptInterface(this@BrowserActionActivity, "exh")
@@ -209,14 +206,14 @@ class BrowserActionActivity : AppCompatActivity() {
                         {
                             getAudioButtonLocation(loopId)
                         },
-                        250
+                        250,
                     )
                 } else {
                     binding.webview.postDelayed(
                         {
                             doStageCheckbox(loopId)
                         },
-                        250
+                        250,
                     )
                 }
             }
@@ -239,7 +236,7 @@ class BrowserActionActivity : AppCompatActivity() {
                         {
                             getAudioButtonLocation(loopId)
                         },
-                        250
+                        250,
                     )
                 }
             }
@@ -257,20 +254,20 @@ class BrowserActionActivity : AppCompatActivity() {
                                         it!!
                                             .replace(TRANSCRIPT_CLEANER_REGEX, "")
                                             .replace(SPACE_DEDUPE_REGEX, " ")
-                                            .trim()
+                                            .trim(),
                                     )
                                 }
                             },
                             {
                                 runBlocking { captchaSolveFail() }
-                            }
+                            },
                         )
                 } else {
                     binding.webview.postDelayed(
                         {
                             doStageDownloadAudio(loopId)
                         },
-                        250
+                        250,
                     )
                 }
             }
@@ -290,7 +287,7 @@ class BrowserActionActivity : AppCompatActivity() {
             httpClient.newCall(
                 Request.Builder()
                     .url(url)
-                    .build()
+                    .build(),
             ).asObservableSuccess().map {
                 token to it
             }
@@ -303,7 +300,7 @@ class BrowserActionActivity : AppCompatActivity() {
                         "https://stream.watsonplatform.net/speech-to-text/api/v1/recognize".toHttpUrlOrNull()!!
                             .newBuilder()
                             .addQueryParameter("watson-token", token)
-                            .build()
+                            .build(),
                     )
                     .post(
                         MultipartBody.Builder()
@@ -315,15 +312,22 @@ class BrowserActionActivity : AppCompatActivity() {
                                 audioFile.toRequestBody(
                                     "audio/mp3".toMediaTypeOrNull(),
                                     0,
-                                    audioFile.size
-                                )
+                                    audioFile.size,
+                                ),
                             )
-                            .build()
+                            .build(),
                     )
-                    .build()
+                    .build(),
             ).asObservableSuccess()
         }.map { response ->
-            Json.decodeFromString<JsonObject>(response.body!!.string())["results"]!!.jsonArray[0].jsonObject["alternatives"]!!.jsonArray[0].jsonObject["transcript"]!!.jsonPrimitive.content.trim()
+            response.parseAs<JsonObject>()["results"]!!
+                .jsonArray[0]
+                .jsonObject["alternatives"]!!
+                .jsonArray[0]
+                .jsonObject["transcript"]!!
+                .jsonPrimitive
+                .content
+                .trim()
         }.toSingle()
     }
 
@@ -354,7 +358,7 @@ class BrowserActionActivity : AppCompatActivity() {
                 }
             })();
             """.trimIndent().replace("\n", ""),
-            null
+            null,
         )
     }
 
@@ -389,7 +393,7 @@ class BrowserActionActivity : AppCompatActivity() {
                 }
             })();
             """.trimIndent().replace("\n", ""),
-            null
+            null,
         )
     }
 
@@ -417,7 +421,7 @@ class BrowserActionActivity : AppCompatActivity() {
                 }
             })();
             """.trimIndent().replace("\n", ""),
-            null
+            null,
         )
     }
 
@@ -448,7 +452,7 @@ class BrowserActionActivity : AppCompatActivity() {
                 }
             })();
             """.trimIndent().replace("\n", ""),
-            null
+            null,
         )
     }
 
@@ -484,7 +488,7 @@ class BrowserActionActivity : AppCompatActivity() {
                     {
                         runValidateCaptcha(loopId)
                     },
-                    250
+                    250,
                 )
             }
         }
@@ -516,7 +520,7 @@ class BrowserActionActivity : AppCompatActivity() {
                 }
             })();
             """.trimIndent().replace("\n", ""),
-            null
+            null,
         )
     }
 
@@ -681,7 +685,7 @@ class BrowserActionActivity : AppCompatActivity() {
             cookies: Map<String, String>,
             script: String?,
             url: String,
-            autoSolveSubmitBtnSelector: String? = null
+            autoSolveSubmitBtnSelector: String? = null,
         ) {
             val intent = baseIntent(context).apply {
                 putExtra(SOURCE_ID_EXTRA, source.id)
@@ -697,7 +701,7 @@ class BrowserActionActivity : AppCompatActivity() {
         fun launchUniversal(
             context: Context,
             source: HttpSource,
-            url: String
+            url: String,
         ) {
             val intent = baseIntent(context).apply {
                 putExtra(SOURCE_ID_EXTRA, source.id)
@@ -710,7 +714,7 @@ class BrowserActionActivity : AppCompatActivity() {
         fun launchUniversal(
             context: Context,
             sourceId: Long,
-            url: String
+            url: String,
         ) {
             val intent = baseIntent(context).apply {
                 putExtra(SOURCE_ID_EXTRA, sourceId)
@@ -725,7 +729,7 @@ class BrowserActionActivity : AppCompatActivity() {
             completionVerifier: ActionCompletionVerifier,
             script: String?,
             url: String,
-            actionName: String
+            actionName: String,
         ) {
             val intent = baseIntent(context).apply {
                 putExtra(SOURCE_ID_EXTRA, completionVerifier.id)
@@ -743,7 +747,7 @@ class BrowserActionActivity : AppCompatActivity() {
             script: String?,
             url: String,
             actionName: String,
-            headers: Map<String, String>? = emptyMap()
+            headers: Map<String, String>? = emptyMap(),
         ) {
             val intent = baseIntent(context).apply {
                 putExtra(HEADERS_EXTRA, HashMap(headers!!))

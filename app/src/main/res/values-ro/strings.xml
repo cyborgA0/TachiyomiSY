@@ -77,7 +77,6 @@
     <string name="portrait">Portret</string>
     <string name="pref_library_update_interval">Frecvență de actualizare</string>
     <string name="update_never">Manual</string>
-    <string name="update_3hour">La fiecare 3 ore</string>
     <string name="update_6hour">La fiecare 6 ore</string>
     <string name="update_12hour">La fiecare 12 ore</string>
     <string name="update_24hour">Zilnic</string>
@@ -88,7 +87,6 @@
     <string name="charging">Se încarcă</string>
     <string name="pref_update_only_non_completed">Actualizați doar manga în desfășurare</string>
     <string name="pref_auto_update_manga_sync">Actualizați progresul capitolului după citire</string>
-    <string name="pref_start_screen">Ecran principal</string>
     <string name="default_category">Categorie implicită</string>
     <string name="default_category_summary">Întreabă mereu</string>
     <string name="all_lang">Toate</string>
@@ -101,17 +99,13 @@
     <string name="ext_trust">Ai încredere</string>
     <string name="ext_untrusted">Nesigură</string>
     <string name="ext_uninstall">Dezinstalează</string>
-    <string name="ext_available">Valabilă</string>
     <string name="untrusted_extension">Extensie nesigură</string>
     <string name="untrusted_extension_message">Extensia a fost semnată cu un certificat nesigur și nu a fost activată.
 \n
 \nO extensie periculoasă ar putea citi orice date de logare stocate în Tachiyomi sau executa cod periculos.
 \n
 \nPrin acordarea încrederii acestui certificat acceptați riscurile menționate.</string>
-    <string name="ext_version_info">Versiune: %1$s</string>
-    <string name="ext_language_info">Limbă: %1$s</string>
     <string name="pref_fullscreen">Ecran complet</string>
-    <string name="pref_lock_orientation">Orientare blocată</string>
     <string name="pref_page_transitions">Animați tranzițiile de pagini</string>
     <string name="action_display_download_badge">Insigne pentru descărcări</string>
     <string name="landscape">Peisaj</string>
@@ -124,7 +118,6 @@
     <string name="pref_reader_navigation">Navigare</string>
     <string name="pref_read_with_volume_keys">Butoane de volum</string>
     <string name="pref_read_with_volume_keys_inverted">Inversează butoanele de volum</string>
-    <string name="pref_read_with_tapping">Apăsare</string>
     <string name="pref_reader_theme">Culoare de fundal</string>
     <string name="white_background">Alb</string>
     <string name="black_background">Negru</string>
@@ -158,7 +151,6 @@
     <string name="color_filter_b_value">B</string>
     <string name="color_filter_a_value">A</string>
     <string name="pref_download_directory">Locația descărcărilor</string>
-    <string name="pref_download_only_over_wifi">Descarcă doar prin Wi-Fi</string>
     <string name="pref_remove_after_marked_as_read">După ce a fost marcat manual ca citit</string>
     <string name="pref_remove_after_read">După citit</string>
     <string name="custom_dir">Locație personalizată</string>
@@ -180,9 +172,6 @@
     <string name="pref_backup_slots">Numărul maxim de copii de rezervă</string>
     <string name="backup_created">Copie de rezervă creată</string>
     <string name="restore_completed">Restaurare completă</string>
-    <string name="backup_restore_content">Restabilirea utilizează surse pentru a prelua date, se pot aplica costuri de operator.
-\n
-\nAsigurați-vă că ați instalat toate extensiile necesare și că sunteți conectat la surse și servicii de urmărire înainte de restaurare.</string>
     <string name="backup_choice">Doriți să creați o copie de rezervă\?</string>
     <string name="restoring_backup">Restaurând copia de rezervă</string>
     <string name="creating_backup">Creând copia de rezervă</string>
@@ -204,7 +193,6 @@
     <string name="login_title">Conectați-vă la %1$s</string>
     <string name="username">Nume de utilizator</string>
     <string name="password">Parolă</string>
-    <string name="show_password">Arată parola</string>
     <string name="login">Autentificare</string>
     <string name="login_success">Autentificat</string>
     <string name="invalid_login">Nu s-a putut face autentificarea</string>
@@ -294,7 +282,6 @@
     <string name="file_select_cover">Selectează imagine de copertă</string>
     <string name="file_select_backup">Selectează fișierul de rezervă</string>
     <string name="update_check_confirm">Descarcă</string>
-    <string name="update_check_ignore">Ignoră</string>
     <string name="update_check_no_new_updates">Nu sunt exista actualizări noi</string>
     <string name="update_check_look_for_updates">Se caută actualizări…</string>
     <string name="update_check_notification_download_in_progress">Se descarcă…</string>
@@ -314,7 +301,6 @@
     <string name="download_notifier_no_network">Nici o conexiune la internet valabilă</string>
     <string name="download_notifier_download_paused">Descărcare întreruptă</string>
     <string name="channel_common">General</string>
-    <string name="channel_library">Bibliotecă</string>
     <string name="action_open_in_web_view">Deschide în WebView</string>
     <string name="pref_true_color">Culoare 32-bit</string>
     <string name="pref_color_filter_mode">Mod filtru de culoare</string>
@@ -326,7 +312,6 @@
     <string name="pref_skip_read_chapters">Treci peste capitolele marcate ca Citit</string>
     <string name="pref_read_with_long_tap">Dialog prin apăsare lunga</string>
     <string name="label_help">Ajutor</string>
-    <string name="pref_library_update_prioritization">Ordinea actualizărilor</string>
     <string name="no_results_found">Nici un rezultat găsit</string>
     <string name="migration_selection_prompt">Selectați o sursă din care să migrați</string>
     <string name="action_webview_back">Înapoi</string>
@@ -341,9 +326,7 @@
     <string name="logout_title">Deconectează-te de la %1$s\?</string>
     <string name="logout">Deconectează-te</string>
     <string name="logout_success">Acum ești deconectat</string>
-    <string name="currently_reading">Acum citesc</string>
     <string name="paused">Întrerupt</string>
-    <string name="want_to_read">Vreau să citesc</string>
     <string name="label_more">Mai multe</string>
     <string name="action_view_chapters">Vezi capitolele</string>
     <string name="action_cancel_all">Anulează tot</string>
@@ -411,7 +394,6 @@
     </plurals>
     <string name="http_error_hint">Verificați site-ul în WebView</string>
     <string name="pref_enable_automatic_extension_updates">Verificați dacă există actualizări pentru extensii</string>
-    <string name="action_sort_last_checked">Ultimul verificat</string>
     <string name="updating_library">Se actualizează biblioteca</string>
     <string name="pref_category_reading">Citind</string>
     <string name="pref_skip_filtered_chapters">Săriți peste capitolele filtrate</string>
@@ -481,19 +463,11 @@
     <string name="pref_library_update_refresh_metadata">Actualizează metadata-ul automat</string>
     <string name="action_display_comfortable_grid">Grilă confortabilă</string>
     <string name="action_migrate">Migrează</string>
-    <plurals name="notification_update_error">
-        <item quantity="one">1 actualizare a eșuat</item>
-        <item quantity="few">%1$d actualizări au eșuat</item>
-        <item quantity="other">%1$d actualizări au eșuat</item>
-    </plurals>
     <string name="label_data">Date</string>
-    <string name="invalid_backup_file_missing_data">Lipsesc date din fișier.</string>
     <string name="invalid_backup_file">Fișierul de rezerva este invalid</string>
     <string name="tracker_not_logged_in">Nu ești autentificat: %1$s</string>
-    <string name="source_not_found_name">Sursa nu a fost găsita: %1$s</string>
     <string name="unofficial_extension_message">Aceasta extensie nu face parte din lista oficială de extensii Tachiyomi.</string>
     <string name="ext_unofficial">Neoficial</string>
-    <string name="pref_library_update_error_notification">Afișează notificări pentru erorile de actualizare</string>
     <string name="page_list_empty_error">Nu s-au găsit pagini</string>
     <string name="tabs_header">Tab-uri</string>
     <string name="badges_header">Insigne</string>
@@ -511,7 +485,6 @@
     </plurals>
     <string name="requires_app_restart">Necesită repornirea aplicației pentru a avea efect</string>
     <string name="action_disable">Dezactivați</string>
-    <string name="action_open_in_settings">Deschideți în Setări</string>
     <string name="action_start">Start</string>
     <string name="tapping_inverted_both">Ambele</string>
     <string name="tapping_inverted_vertical">Vertical</string>
@@ -520,7 +493,6 @@
     <string name="pref_read_with_tapping_inverted">Invertiți atingerea</string>
     <string name="unknown_status">Stare necunoscută</string>
     <string name="unknown_author">Autor necunoscut</string>
-    <string name="pref_jump_to_chapters">Sari la capitole deschise</string>
     <string name="updated_version">Actualizat la v%1$s</string>
     <string name="whats_new">Ce este nou</string>
     <string name="action_download_unread">Descărcați capitolele necitite</string>
@@ -529,8 +501,6 @@
     <string name="pref_category_reading_mode">Mod citire</string>
     <string name="pref_category_theme">Temă</string>
     <string name="action_sort_date_added">Data adăugării</string>
-    <string name="group_backup_restore">Creează copie de rezervă și restaurează</string>
-    <string name="group_downloader">Descărcări</string>
     <string name="channel_errors">Erori</string>
     <string name="channel_complete">Terminat</string>
     <string name="channel_progress">Progresul</string>
@@ -561,7 +531,6 @@
     <string name="chapter_settings">Setările capitolului</string>
     <string name="downloaded_chapters">Capitole descărcate</string>
     <string name="manga_from_library">Manga din bibliotecă</string>
-    <string name="pref_hide_bottom_bar_on_scroll">Ascundeți bara de jos când faceți scroll</string>
     <string name="action_search_settings">Setări de căutare</string>
     <string name="pref_incognito_mode_summary">Întrerupe citirea istoricului</string>
     <string name="pref_incognito_mode">Modul incognito</string>
@@ -571,11 +540,7 @@
     <string name="spen_next_page">Pagina următoare</string>
     <string name="spen_previous_page">Pagina anterioară</string>
     <string name="migration_help_guide">Ghid de migrare a sursei</string>
-    <string name="invalid_backup_file_type">Tip de fișier de restaurare nevalid: %1$s
-\nAr trebui să se termine cu .proto.gz sau .json.</string>
     <string name="pref_category_nsfw_content">Conținut NSFW (18+)</string>
-    <string name="pref_label_nsfw_extension">Etichetează în lista extensiilor</string>
-    <string name="pref_show_nsfw_extension">Arată în lista extensiilor</string>
     <string name="pref_show_nsfw_source">Arată în lista surselor</string>
     <string name="file_picker_error">Nicio aplicație de ales fișiere nu a fost găsite</string>
     <string name="myanimelist_relogin">Te rugăm să te loghezi la MAL din nou</string>
@@ -583,9 +548,6 @@
     <string name="pref_dual_page_split">împărțirea paginilor duble</string>
     <string name="pref_show_navigation_mode_summary">Afișați zonele de atingere atunci când cititorul este deschis</string>
     <string name="pref_show_navigation_mode">Afișați suprapunerea aspectului de navigare</string>
-    <string name="network_unmetered">Rețea nemăsurată</string>
-    <string name="update_8hour">O dată la 8 ore</string>
-    <string name="update_4hour">O dată la 4 ore</string>
     <string name="action_desc">Descendent</string>
     <string name="action_asc">Ascendent</string>
     <string name="action_order_by_chapter_number">După numărul capitolului</string>
@@ -627,4 +589,26 @@
     <string name="cover_saved">Copertă salvată</string>
     <string name="chapter_not_found">Capitolul nu a fost găsit</string>
     <string name="unread">Necitit</string>
+    <string name="action_start_downloading_now">Începe acum descărcarea</string>
+    <string name="information_empty_category_dialog">Tu înca nu ai nici-o catetegorie.</string>
+    <string name="theme_monet">Dinamic</string>
+    <string name="label_default">Implicit</string>
+    <string name="theme_midnightdusk">Amurg de Miazănoapte</string>
+    <string name="channel_app_updates">Actualizări de aplicație</string>
+    <string name="theme_tealturquoise">Teal și turcoaz</string>
+    <string name="action_display_local_badge">Manga local</string>
+    <string name="pref_category_appearance">Aspect</string>
+    <string name="pref_app_theme">Tematică Aplicație</string>
+    <string name="theme_greenapple">Măr Verde</string>
+    <string name="cancel_all_for_series">Anulează totul pentru această serie</string>
+    <string name="action_display_language_badge">Limbă</string>
+    <string name="confirm_lock_change">Autentifică-te pentru a confirma schimbările</string>
+    <string name="label_warning">Avertizare</string>
+    <string name="theme_strawberrydaiquiri">Daiquiri de căpșuni</string>
+    <string name="theme_tako">Tako</string>
+    <string name="theme_yinyang">Yin și Yang</string>
+    <string name="theme_yotsuba">Yotsuba</string>
+    <string name="publishing_finished">Editare finalizată</string>
+    <string name="cancelled">Anulat</string>
+    <string name="on_hiatus">În pauză</string>
 </resources>

@@ -3,8 +3,8 @@ package eu.kanade.tachiyomi.data.download
 import android.content.Context
 import androidx.core.net.toUri
 import com.hippo.unifile.UniFile
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.data.database.models.Chapter
-import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.source.SourceManager
 import kotlinx.coroutines.flow.onEach
@@ -27,7 +27,7 @@ class DownloadCache(
     private val context: Context,
     private val provider: DownloadProvider,
     private val sourceManager: SourceManager,
-    private val preferences: PreferencesHelper = Injekt.get()
+    private val preferences: PreferencesHelper = Injekt.get(),
 ) {
 
     /**
@@ -65,23 +65,31 @@ class DownloadCache(
     /**
      * Returns true if the chapter is downloaded.
      *
-     * @param chapter the chapter to check.
-     * @param manga the manga of the chapter.
+     * @param chapterName the name of the chapter to query.
+     * @param chapterScanlator scanlator of the chapter to query
+     * @param mangaTitle the title of the manga to query.
+     * @param sourceId the id of the source of the chapter.
      * @param skipCache whether to skip the directory cache and check in the filesystem.
      */
-    fun isChapterDownloaded(chapter: Chapter, manga: Manga, skipCache: Boolean): Boolean {
+    fun isChapterDownloaded(
+        chapterName: String,
+        chapterScanlator: String?,
+        mangaTitle: String,
+        sourceId: Long,
+        skipCache: Boolean,
+    ): Boolean {
         if (skipCache) {
-            val source = sourceManager.get(manga.source) ?: return false
-            return provider.findChapterDir(chapter, manga, source) != null
+            val source = sourceManager.getOrStub(sourceId)
+            return provider.findChapterDir(chapterName, chapterScanlator, mangaTitle, source) != null
         }
 
         checkRenew()
 
-        val sourceDir = rootDir.files[manga.source]
+        val sourceDir = rootDir.files[sourceId]
         if (sourceDir != null) {
-            val mangaDir = sourceDir.files[provider.getMangaDirName(manga)]
+            val mangaDir = sourceDir.files[provider.getMangaDirName(mangaTitle)]
             if (mangaDir != null) {
-                return provider.getValidChapterDirNames(chapter).any { it in mangaDir.files || "$it.cbz" in mangaDir.files }
+                return provider.getValidChapterDirNames(chapterName, chapterScanlator).any { it in mangaDir.files }
             }
         }
         return false
@@ -97,7 +105,7 @@ class DownloadCache(
 
         val sourceDir = rootDir.files[manga.source]
         if (sourceDir != null) {
-            val mangaDir = sourceDir.files[provider.getMangaDirName(manga)]
+            val mangaDir = sourceDir.files[provider.getMangaDirName(/* SY --> */ manga.ogTitle /* SY <-- */)]
             if (mangaDir != null) {
                 return mangaDir.files
                     .filter { !it.endsWith(Downloader.TMP_DIR_SUFFIX) }
@@ -126,11 +134,15 @@ class DownloadCache(
         val onlineSources = sourceManager.getVisibleOnlineSources()
         // SY <--
 
+        val stubSources = sourceManager.getStubSources()
+
+        val allSource = onlineSources + stubSources
+
         val sourceDirs = rootDir.dir.listFiles()
             .orEmpty()
             .associate { it.name to SourceDirectory(it) }
             .mapNotNullKeys { entry ->
-                onlineSources.find { provider.getSourceDirName(it).equals(entry.key, ignoreCase = true) }?.id
+                allSource.find { provider.getSourceDirName(it).equals(entry.key, ignoreCase = true) }?.id
             }
 
         rootDir.files = sourceDirs
@@ -172,7 +184,7 @@ class DownloadCache(
         }
 
         // Retrieve the cached manga directory or cache a new one
-        val mangaDirName = provider.getMangaDirName(manga)
+        val mangaDirName = provider.getMangaDirName(/* SY --> */ manga.ogTitle /* SY <-- */)
         var mangaDir = sourceDir.files[mangaDirName]
         if (mangaDir == null) {
             mangaDir = MangaDirectory(mangaUniFile)
@@ -192,12 +204,10 @@ class DownloadCache(
     @Synchronized
     fun removeChapter(chapter: Chapter, manga: Manga) {
         val sourceDir = rootDir.files[manga.source] ?: return
-        val mangaDir = sourceDir.files[provider.getMangaDirName(manga)] ?: return
-        provider.getValidChapterDirNames(chapter).forEach {
+        val mangaDir = sourceDir.files[provider.getMangaDirName(/* SY --> */ manga.ogTitle /* SY <-- */)] ?: return
+        provider.getValidChapterDirNames(chapter.name, chapter.scanlator).forEach {
             if (it in mangaDir.files) {
                 mangaDir.files -= it
-            } else if ("$it.cbz" in mangaDir.files) {
-                mangaDir.files -= "$it.cbz"
             }
         }
     }
@@ -205,7 +215,7 @@ class DownloadCache(
     // SY -->
     fun removeFolders(folders: List<String>, manga: Manga) {
         val sourceDir = rootDir.files[manga.source] ?: return
-        val mangaDir = sourceDir.files[provider.getMangaDirName(manga)] ?: return
+        val mangaDir = sourceDir.files[provider.getMangaDirName(manga.ogTitle)] ?: return
         folders.forEach { chapter ->
             if (chapter in mangaDir.files) {
                 mangaDir.files -= chapter
@@ -224,13 +234,11 @@ class DownloadCache(
     @Synchronized
     fun removeChapters(chapters: List<Chapter>, manga: Manga) {
         val sourceDir = rootDir.files[manga.source] ?: return
-        val mangaDir = sourceDir.files[provider.getMangaDirName(manga)] ?: return
+        val mangaDir = sourceDir.files[provider.getMangaDirName(/* SY --> */ manga.ogTitle /* SY <-- */)] ?: return
         chapters.forEach { chapter ->
-            provider.getValidChapterDirNames(chapter).forEach {
+            provider.getValidChapterDirNames(chapter.name, chapter.scanlator).forEach {
                 if (it in mangaDir.files) {
                     mangaDir.files -= it
-                } else if ("$it.cbz" in mangaDir.files) {
-                    mangaDir.files -= "$it.cbz"
                 }
             }
         }
@@ -244,7 +252,7 @@ class DownloadCache(
     @Synchronized
     fun removeManga(manga: Manga) {
         val sourceDir = rootDir.files[manga.source] ?: return
-        val mangaDirName = provider.getMangaDirName(manga)
+        val mangaDirName = provider.getMangaDirName(/* SY --> */ manga.ogTitle /* SY <-- */)
         if (mangaDirName in sourceDir.files) {
             sourceDir.files -= mangaDirName
         }
@@ -255,7 +263,7 @@ class DownloadCache(
      */
     private class RootDirectory(
         val dir: UniFile,
-        var files: Map<Long, SourceDirectory> = hashMapOf()
+        var files: Map<Long, SourceDirectory> = hashMapOf(),
     )
 
     /**
@@ -263,7 +271,7 @@ class DownloadCache(
      */
     private class SourceDirectory(
         val dir: UniFile,
-        var files: Map<String, MangaDirectory> = hashMapOf()
+        var files: Map<String, MangaDirectory> = hashMapOf(),
     )
 
     /**
@@ -271,7 +279,7 @@ class DownloadCache(
      */
     private class MangaDirectory(
         val dir: UniFile,
-        var files: Set<String> = hashSetOf()
+        var files: Set<String> = hashSetOf(),
     )
 
     /**

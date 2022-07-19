@@ -22,15 +22,13 @@ import eu.kanade.tachiyomi.ui.base.controller.NucleusController
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.shrinkOnScroll
-import exh.util.hours
-import exh.util.minutes
 import kotlin.time.Duration
-import kotlin.time.ExperimentalTime
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * Controller to manage the lock times for the biometric lock.
  */
-@OptIn(ExperimentalTime::class)
 class BiometricTimesController :
     NucleusController<CategoriesControllerBinding, BiometricTimesPresenter>(),
     FabController,
@@ -196,7 +194,7 @@ class BiometricTimesController :
                     (activity as? MainActivity)?.binding?.rootCoordinator!!,
                     R.string.biometric_lock_time_deleted_snack,
                     R.string.action_undo,
-                    3000
+                    3000,
                 )
 
                 mode.finish()

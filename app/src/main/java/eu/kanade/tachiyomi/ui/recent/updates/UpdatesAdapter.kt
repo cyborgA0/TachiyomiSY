@@ -8,11 +8,13 @@ import eu.kanade.tachiyomi.util.system.getResourceColor
 
 class UpdatesAdapter(
     val controller: UpdatesController,
-    context: Context
-) : BaseChaptersAdapter<IFlexible<*>>(controller) {
+    context: Context,
+    val items: List<IFlexible<*>>?,
+) : BaseChaptersAdapter<IFlexible<*>>(controller, items) {
 
     var readColor = context.getResourceColor(R.attr.colorOnSurface, 0.38f)
     var unreadColor = context.getResourceColor(R.attr.colorOnSurface)
+    val unreadColorSecondary = context.getResourceColor(android.R.attr.textColorSecondary)
     var bookmarkedColor = context.getResourceColor(R.attr.colorAccent)
 
     val coverClickListener: OnCoverClickListener = controller

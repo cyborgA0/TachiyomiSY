@@ -2,8 +2,9 @@ package eu.kanade.tachiyomi.util.preference
 
 import androidx.annotation.StringRes
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.biometric.BiometricPrompt
+import androidx.fragment.app.FragmentActivity
 import androidx.preference.CheckBoxPreference
-import androidx.preference.DialogPreference
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.MultiSelectListPreference
@@ -14,11 +15,14 @@ import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreferenceCompat
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.util.system.AuthenticatorUtil
+import eu.kanade.tachiyomi.util.system.AuthenticatorUtil.isAuthenticationSupported
+import eu.kanade.tachiyomi.util.system.AuthenticatorUtil.startAuthentication
 import eu.kanade.tachiyomi.util.system.getResourceColor
+import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.widget.preference.AdaptiveTitlePreferenceCategory
 import eu.kanade.tachiyomi.widget.preference.IntListPreference
 import eu.kanade.tachiyomi.widget.preference.SwitchPreferenceCategory
-import eu.kanade.tachiyomi.widget.preference.SwitchSettingsPreference
 
 @DslMarker
 @Target(AnnotationTarget.TYPE)
@@ -39,7 +43,7 @@ inline fun PreferenceGroup.infoPreference(@StringRes infoRes: Int): Preference {
             iconTint = context.getResourceColor(android.R.attr.textColorHint)
             summaryRes = infoRes
             isSelectable = false
-        }
+        },
     )
 }
 
@@ -51,28 +55,24 @@ inline fun PreferenceGroup.switchPreferenceCategory(block: (@DSL SwitchPreferenc
     return initThenAdd(SwitchPreferenceCategory(context), block)
 }
 
-inline fun PreferenceGroup.switchSettingsPreference(block: (@DSL SwitchSettingsPreference).() -> Unit): SwitchSettingsPreference {
-    return initThenAdd(SwitchSettingsPreference(context), block)
-}
-
 inline fun PreferenceGroup.checkBoxPreference(block: (@DSL CheckBoxPreference).() -> Unit): CheckBoxPreference {
     return initThenAdd(CheckBoxPreference(context), block)
 }
 
 inline fun PreferenceGroup.editTextPreference(block: (@DSL EditTextPreference).() -> Unit): EditTextPreference {
-    return initThenAdd(EditTextPreference(context), block).also(::initDialog)
+    return initThenAdd(EditTextPreference(context), block)
 }
 
 inline fun PreferenceGroup.listPreference(block: (@DSL ListPreference).() -> Unit): ListPreference {
-    return initThenAdd(ListPreference(context), block).also(::initDialog)
+    return initThenAdd(ListPreference(context), block)
 }
 
 inline fun PreferenceGroup.intListPreference(block: (@DSL IntListPreference).() -> Unit): IntListPreference {
-    return initThenAdd(IntListPreference(context), block).also(::initDialog)
+    return initThenAdd(IntListPreference(context), block)
 }
 
 inline fun PreferenceGroup.multiSelectListPreference(block: (@DSL MultiSelectListPreference).() -> Unit): MultiSelectListPreference {
-    return initThenAdd(MultiSelectListPreference(context), block).also(::initDialog)
+    return initThenAdd(MultiSelectListPreference(context), block)
 }
 
 inline fun PreferenceScreen.preferenceCategory(block: (@DSL PreferenceCategory).() -> Unit): PreferenceCategory {
@@ -81,14 +81,6 @@ inline fun PreferenceScreen.preferenceCategory(block: (@DSL PreferenceCategory).
 
 inline fun PreferenceScreen.preferenceScreen(block: (@DSL PreferenceScreen).() -> Unit): PreferenceScreen {
     return addThenInit(preferenceManager.createPreferenceScreen(context), block)
-}
-
-fun initDialog(dialogPreference: DialogPreference) {
-    with(dialogPreference) {
-        if (dialogTitle == null) {
-            dialogTitle = title
-        }
-    }
 }
 
 inline fun <P : Preference> PreferenceGroup.add(p: P): P {
@@ -117,12 +109,54 @@ inline fun <P : Preference> PreferenceGroup.addThenInit(p: P, block: P.() -> Uni
     }
 }
 
+inline fun <T> Preference.bindTo(preference: com.fredporciuncula.flow.preferences.Preference<T>) {
+    key = preference.key
+    defaultValue = preference.defaultValue
+}
+
+inline fun <T> ListPreference.bindTo(preference: com.fredporciuncula.flow.preferences.Preference<T>) {
+    key = preference.key
+    // ListPreferences persist values as strings, even when we're using our IntListPreference
+    defaultValue = preference.defaultValue.toString()
+}
+
 inline fun Preference.onClick(crossinline block: () -> Unit) {
     setOnPreferenceClickListener { block(); true }
 }
 
 inline fun Preference.onChange(crossinline block: (Any?) -> Boolean) {
     setOnPreferenceChangeListener { _, newValue -> block(newValue) }
+}
+
+inline fun SwitchPreferenceCompat.requireAuthentication(activity: FragmentActivity?, title: String, subtitle: String?) {
+    onPreferenceChangeListener = Preference.OnPreferenceChangeListener { _, newValue ->
+        if (context.isAuthenticationSupported()) {
+            activity?.startAuthentication(
+                title,
+                subtitle,
+                callback = object : AuthenticatorUtil.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(
+                        activity: FragmentActivity?,
+                        result: BiometricPrompt.AuthenticationResult,
+                    ) {
+                        super.onAuthenticationSucceeded(activity, result)
+                        isChecked = newValue as Boolean
+                    }
+
+                    override fun onAuthenticationError(
+                        activity: FragmentActivity?,
+                        errorCode: Int,
+                        errString: CharSequence,
+                    ) {
+                        super.onAuthenticationError(activity, errorCode, errString)
+                        activity?.toast(errString.toString())
+                    }
+                },
+            )
+        }
+
+        false
+    }
 }
 
 var Preference.defaultValue: Any?
@@ -152,7 +186,7 @@ var Preference.summaryRes: Int
 var Preference.iconTint: Int
     get() = 0 // set only
     set(value) {
-        icon.setTint(value)
+        icon?.setTint(value)
     }
 
 var ListPreference.entriesRes: Array<Int>

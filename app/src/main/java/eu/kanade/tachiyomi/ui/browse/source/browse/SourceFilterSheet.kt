@@ -8,7 +8,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.ConcatAdapter
-import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
 import eu.davidea.flexibleadapter.FlexibleAdapter
 import eu.davidea.flexibleadapter.items.IFlexible
@@ -20,7 +19,6 @@ import eu.kanade.tachiyomi.widget.SimpleNavigationView
 import eu.kanade.tachiyomi.widget.sheet.BaseBottomSheetDialog
 import exh.savedsearches.EXHSavedSearch
 import exh.source.getMainSource
-import exh.util.under
 
 class SourceFilterSheet(
     activity: Activity,
@@ -33,8 +31,8 @@ class SourceFilterSheet(
     private val onResetClicked: () -> Unit,
     // EXH -->
     private val onSaveClicked: () -> Unit,
-    var onSavedSearchClicked: (Int) -> Unit = {},
-    var onSavedSearchDeleteClicked: (Int, String) -> Unit = { _, _ -> }
+    var onSavedSearchClicked: (Long) -> Unit = {},
+    var onSavedSearchDeleteClicked: (Long, String) -> Unit = { _, _ -> },
     // EXH <--
 ) : BaseBottomSheetDialog(activity) {
 
@@ -44,7 +42,7 @@ class SourceFilterSheet(
         searches = searches,
         source = source,
         controller = controller,
-        dismissSheet = ::dismiss
+        dismissSheet = ::dismiss,
         // SY <--
     )
 
@@ -87,7 +85,7 @@ class SourceFilterSheet(
         searches: List<EXHSavedSearch> = emptyList(),
         source: CatalogueSource? = null,
         controller: BaseController<*>? = null,
-        dismissSheet: (() -> Unit)? = null
+        dismissSheet: (() -> Unit)? = null,
         // SY <--
     ) :
         SimpleNavigationView(context, attrs) {
@@ -98,11 +96,9 @@ class SourceFilterSheet(
         // SY -->
         var onSaveClicked = {}
 
-        var onSavedSearchClicked: (Int) -> Unit = {}
+        var onSavedSearchClicked: (Long) -> Unit = {}
 
-        var onSavedSearchDeleteClicked: (Int, String) -> Unit = { _, _ -> }
-
-        val adapters = mutableListOf<RecyclerView.Adapter<*>>()
+        var onSavedSearchDeleteClicked: (Long, String) -> Unit = { _, _ -> }
 
         private val savedSearchesAdapter = SavedSearchesAdapter(getSavedSearchesChips(searches))
         // SY <--
@@ -113,18 +109,21 @@ class SourceFilterSheet(
         private val binding = SourceFilterSheetBinding.inflate(
             LayoutInflater.from(context),
             null,
-            false
+            false,
         )
 
         init {
             // SY -->
-            val mainSource = source?.getMainSource<BrowseSourceFilterHeader>()
-            if (mainSource != null && controller != null) {
-                adapters += mainSource.getFilterHeader(controller) { dismissSheet?.invoke() }
-            }
-            adapters += savedSearchesAdapter
-            adapters += adapter
-            recycler.adapter = ConcatAdapter(adapters)
+            recycler.adapter = ConcatAdapter(
+                listOfNotNull(
+                    controller?.let {
+                        source?.getMainSource<BrowseSourceFilterHeader>()
+                            ?.getFilterHeader(it) { dismissSheet?.invoke() }
+                    },
+                    savedSearchesAdapter,
+                    adapter,
+                ),
+            )
             // SY <--
             recycler.setHasFixedSize(true)
             (binding.root.getChildAt(1) as ViewGroup).addView(recycler)
@@ -138,37 +137,26 @@ class SourceFilterSheet(
 
         // EXH -->
         fun setSavedSearches(searches: List<EXHSavedSearch>) {
-            val savedSearchesChips = getSavedSearchesChips(searches)
-            savedSearchesAdapter.chips = savedSearchesChips
-            recycler.post {
-                (recycler.findViewHolderForAdapterPosition(0) as? SavedSearchesAdapter.SavedSearchesViewHolder)?.bind(savedSearchesChips)
-            }
+            savedSearchesAdapter.chips = getSavedSearchesChips(searches)
+            savedSearchesAdapter.notifyItemChanged(0)
         }
 
         private fun getSavedSearchesChips(searches: List<EXHSavedSearch>): List<Chip> {
-            recycler.post {
-                binding.saveSearchBtn.isVisible = searches.size under MAX_SAVED_SEARCHES
-            }
-            return searches.withIndex()
-                .sortedBy { it.value.name }
-                .map { (index, search) ->
+            return searches
+                .map { search ->
                     Chip(context).apply {
                         text = search.name
-                        setOnClickListener { onSavedSearchClicked(index) }
+                        setOnClickListener { onSavedSearchClicked(search.id) }
                         setOnLongClickListener {
-                            onSavedSearchDeleteClicked(index, search.name); true
+                            onSavedSearchDeleteClicked(search.id, search.name); true
                         }
                     }
                 }
-                .sortedBy { it.text.toString().lowercase() }
+                .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.text.toString() })
         }
 
         fun hideFilterButton() {
             binding.filterBtn.isVisible = false
-        }
-
-        companion object {
-            const val MAX_SAVED_SEARCHES = 500 // if you want more than this, fuck you, i guess
         }
         // EXH <--
     }

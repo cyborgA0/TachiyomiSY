@@ -6,12 +6,12 @@ import android.view.MenuItem
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import eu.kanade.domain.chapter.model.Chapter
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.models.Chapter
-import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.databinding.EhActivityInterceptBinding
 import eu.kanade.tachiyomi.source.online.UrlImportableSource
-import eu.kanade.tachiyomi.ui.base.activity.BaseViewBindingActivity
+import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.manga.MangaController
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
@@ -24,8 +24,10 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
-class InterceptActivity : BaseViewBindingActivity<EhActivityInterceptBinding>() {
+class InterceptActivity : BaseActivity() {
     private var statusJob: Job? = null
+
+    lateinit var binding: EhActivityInterceptBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,18 +70,18 @@ class InterceptActivity : BaseViewBindingActivity<EhActivityInterceptBinding>() 
                         onBackPressed()
                         startActivity(
                             if (it.chapter != null) {
-                                ReaderActivity.newIntent(this, it.manga, it.chapter)
+                                ReaderActivity.newIntent(this, it.manga.id, it.chapter.id)
                             } else {
                                 Intent(this, MainActivity::class.java)
                                     .setAction(MainActivity.SHORTCUT_MANGA)
                                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                                     .putExtra(MangaController.MANGA_EXTRA, it.mangaId)
-                            }
+                            },
                         )
                     }
                     is InterceptResult.Failure -> {
                         binding.interceptProgress.isVisible = false
-                        binding.interceptStatus.text = this.getString(R.string.error_with_reason, it.reason)
+                        binding.interceptStatus.text = getString(R.string.error_with_reason, it.reason)
                         MaterialAlertDialogBuilder(this)
                             .setTitle(R.string.chapter_error)
                             .setMessage(getString(R.string.could_not_open_manga, it.reason))
@@ -88,6 +90,8 @@ class InterceptActivity : BaseViewBindingActivity<EhActivityInterceptBinding>() 
                             .setOnDismissListener { onBackPressed() }
                             .show()
                     }
+                    InterceptResult.Idle -> Unit
+                    InterceptResult.Loading -> Unit
                 }
             }
             .launchIn(lifecycleScope)
@@ -129,12 +133,14 @@ class InterceptActivity : BaseViewBindingActivity<EhActivityInterceptBinding>() 
             val result = galleryAdder.addGallery(this@InterceptActivity, gallery, forceSource = source)
 
             status.value = when (result) {
-                is GalleryAddEvent.Success -> result.manga.id?.let {
-                    InterceptResult.Success(it, result.manga, result.chapter)
-                } ?: InterceptResult.Failure(this@InterceptActivity.getString(R.string.manga_id_is_null))
+                is GalleryAddEvent.Success -> InterceptResult.Success(result.manga.id, result.manga, result.chapter)
                 is GalleryAddEvent.Fail -> InterceptResult.Failure(result.logMessage)
             }
         }
+    }
+
+    init {
+        registerSecureActivity(this)
     }
 }
 

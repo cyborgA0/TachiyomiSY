@@ -1,8 +1,8 @@
 package eu.kanade.tachiyomi.ui.reader.loader
 
 import android.content.Context
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.LocalSource
 import eu.kanade.tachiyomi.source.Source
@@ -10,13 +10,13 @@ import eu.kanade.tachiyomi.source.SourceManager
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.all.MergedSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
+import eu.kanade.tachiyomi.util.system.logcat
 import exh.debug.DebugFunctions.prefs
 import exh.merged.sql.models.MergedMangaReference
 import rx.Completable
 import rx.Observable
 import rx.android.schedulers.AndroidSchedulers
 import rx.schedulers.Schedulers
-import timber.log.Timber
 
 /**
  * Loader used to retrieve the [PageLoader] for a given chapter.
@@ -29,7 +29,7 @@ class ChapterLoader(
     // SY -->
     private val sourceManager: SourceManager,
     private val mergedReferences: List<MergedMangaReference>,
-    private val mergedManga: Map<Long, Manga>
+    private val mergedManga: Map<Long, Manga>,
 // SY <--
 ) {
 
@@ -46,7 +46,7 @@ class ChapterLoader(
             .doOnNext { chapter.state = ReaderChapter.State.Loading }
             .observeOn(Schedulers.io())
             .flatMap { readerChapter ->
-                Timber.d("Loading pages for ${chapter.chapter.name}")
+                logcat { "Loading pages for ${chapter.chapter.name}" }
 
                 val loader = getPageLoader(readerChapter)
 
@@ -68,7 +68,7 @@ class ChapterLoader(
                 // otherwise use the requested page.
                 if (!chapter.chapter.read /* --> EH */ || prefs
                     .preserveReadingPosition()
-                    .get() /* <-- EH */
+                    .get() // <-- EH
                 ) {
                     chapter.requestedPage = chapter.chapter.last_page_read
                 }
@@ -87,14 +87,15 @@ class ChapterLoader(
      * Returns the page loader to use for this [chapter].
      */
     private fun getPageLoader(chapter: ReaderChapter): PageLoader {
-        val isDownloaded = downloadManager.isChapterDownloaded(chapter.chapter, manga, true)
+        val dbChapter = chapter.chapter
+        val isDownloaded = downloadManager.isChapterDownloaded(dbChapter.name, dbChapter.scanlator, /* SY --> */ manga.ogTitle /* SY <-- */, manga.source, skipCache = true)
         return when {
             // SY -->
             source is MergedSource -> {
                 val mangaReference = mergedReferences.firstOrNull { it.mangaId == chapter.chapter.manga_id } ?: error("Merge reference null")
                 val source = sourceManager.get(mangaReference.mangaSourceId) ?: error("Source ${mangaReference.mangaSourceId} was null")
                 val manga = mergedManga[chapter.chapter.manga_id] ?: error("Manga for merged chapter was null")
-                val isMergedMangaDownloaded = downloadManager.isChapterDownloaded(chapter.chapter, manga, true)
+                val isMergedMangaDownloaded = downloadManager.isChapterDownloaded(chapter.chapter.name, chapter.chapter.scanlator, manga.ogTitle, manga.source, true)
                 when {
                     isMergedMangaDownloaded -> DownloadPageLoader(chapter, manga, source, downloadManager)
                     source is HttpSource -> HttpPageLoader(chapter, source)
@@ -120,6 +121,7 @@ class ChapterLoader(
                     is LocalSource.Format.Epub -> EpubPageLoader(format.file)
                 }
             }
+            source is SourceManager.StubSource -> throw source.getSourceNotInstalledException()
             else -> error(context.getString(R.string.loader_not_implemented_error))
         }
     }

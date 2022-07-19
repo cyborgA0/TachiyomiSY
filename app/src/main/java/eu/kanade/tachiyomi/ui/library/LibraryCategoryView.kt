@@ -9,15 +9,17 @@ import androidx.recyclerview.widget.RecyclerView
 import dev.chrisbanes.insetter.applyInsetter
 import eu.davidea.flexibleadapter.FlexibleAdapter
 import eu.davidea.flexibleadapter.SelectableAdapter
+import eu.kanade.domain.category.interactor.UpdateCategory
+import eu.kanade.domain.category.model.Category
+import eu.kanade.domain.category.model.CategoryUpdate
+import eu.kanade.domain.category.model.toDbCategory
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
-import eu.kanade.tachiyomi.data.database.models.Category
-import eu.kanade.tachiyomi.data.database.models.Manga
+import eu.kanade.tachiyomi.data.database.models.toDomainManga
 import eu.kanade.tachiyomi.data.library.LibraryUpdateService
 import eu.kanade.tachiyomi.data.preference.PreferenceValues
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.databinding.LibraryCategoryBinding
-import eu.kanade.tachiyomi.ui.category.CategoryAdapter
 import eu.kanade.tachiyomi.ui.library.setting.SortDirectionSetting
 import eu.kanade.tachiyomi.ui.library.setting.SortModeSetting
 import eu.kanade.tachiyomi.ui.main.MainActivity
@@ -41,7 +43,6 @@ import rx.subscriptions.CompositeSubscription
 import uy.kohesive.injekt.injectLazy
 import java.util.ArrayDeque
 import java.util.concurrent.TimeUnit
-import eu.kanade.tachiyomi.ui.library.setting.DisplayModeSetting as DisplayMode
 
 /**
  * Fragment containing the library manga for a certain category.
@@ -51,15 +52,12 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
     FlexibleAdapter.OnItemClickListener,
     FlexibleAdapter.OnItemLongClickListener,
     // SY -->
-    FlexibleAdapter.OnItemMoveListener,
-    CategoryAdapter.OnItemReleaseListener {
+    FlexibleAdapter.OnItemMoveListener {
     // SY <--
 
     private val scope = MainScope()
 
     private val preferences: PreferencesHelper by injectLazy()
-
-    private val db: DatabaseHelper by injectLazy()
 
     /**
      * The fragment containing this view.
@@ -93,12 +91,10 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
     private var initialLoadHandle: LoadingHandle? = null
     // EXH <--
 
-    fun onCreate(controller: LibraryController, binding: LibraryCategoryBinding) {
+    fun onCreate(controller: LibraryController, binding: LibraryCategoryBinding, viewType: Int) {
         this.controller = controller
 
-        recycler = if (preferences.libraryDisplayMode().get() == DisplayMode.LIST &&
-            !preferences.categorisedDisplaySettings().get()
-        ) {
+        recycler = if (viewType == LibraryAdapter.LIST_DISPLAY_MODE) {
             (binding.swipeRefresh.inflate(R.layout.library_list_recycler) as AutofitRecyclerView).apply {
                 spanCount = 1
             }
@@ -150,7 +146,7 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
                                 ) ||
                                 preferences.groupLibraryUpdateType().get() == PreferenceValues.GroupLibraryMode.GLOBAL -> R.string.updating_library
                             else -> R.string.updating_category
-                        }
+                        },
                     )
                 }
                 // SY <--
@@ -163,15 +159,6 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
 
     fun onBind(category: Category) {
         this.category = category
-
-        // If displayMode should be set from category adjust manga count per row
-        if (preferences.categorisedDisplaySettings().get()) {
-            recycler.spanCount = if (DisplayMode.fromFlag(category.displayMode) == DisplayMode.LIST || (preferences.libraryDisplayMode().get() == DisplayMode.LIST && category.id == 0)) {
-                1
-            } else {
-                controller.mangaPerRow
-            }
-        }
 
         adapter.mode = if (controller.selectedMangas.isNotEmpty()) {
             SelectableAdapter.Mode.MULTI
@@ -228,7 +215,7 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
             .filter { it == category.id }
             .subscribe {
                 adapter.currentItems.forEach { item ->
-                    controller.setSelection(item.manga, true)
+                    controller.setSelection(item.manga.toDomainManga()!!, true)
                 }
                 controller.invalidateActionMode()
             }
@@ -237,7 +224,7 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
             .filter { it == category.id }
             .subscribe {
                 adapter.currentItems.forEach { item ->
-                    controller.toggleSelection(item.manga)
+                    controller.toggleSelection(item.manga.toDomainManga()!!)
                 }
                 controller.invalidateActionMode()
             }
@@ -274,20 +261,21 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
         // SY -->
         adapter.isLongPressDragEnabled = adapter.canDrag()
         var mangaForCategory = event.getMangaForCategory(category).orEmpty()
-        if (preferences.categorisedDisplaySettings().get() && category.id != 0) {
+        var mangaOrder = category.mangaOrder
+        if (preferences.categorizedDisplaySettings().get() && category.id != 0L) {
             if (SortModeSetting.fromFlag(category.sortMode) == SortModeSetting.DRAG_AND_DROP) {
                 mangaForCategory = mangaForCategory.sortedBy {
-                    category.mangaOrder.indexOf(it.manga.id)
+                    mangaOrder.indexOf(it.manga.id)
                 }
             }
         } else if (preferences.librarySortingMode().get() == SortModeSetting.DRAG_AND_DROP) {
-            if (category.id == 0) {
-                category.mangaOrder = preferences.defaultMangaOrder().get()
+            if (category.id == 0L) {
+                mangaOrder = preferences.defaultMangaOrder().get()
                     .split("/")
                     .mapNotNull { it.toLongOrNull() }
             }
             mangaForCategory = mangaForCategory.sortedBy {
-                category.mangaOrder.indexOf(it.manga.id)
+                mangaOrder.indexOf(it.manga.id)
             }
         }
         // SY <--
@@ -301,7 +289,7 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
                 val position = adapter.indexOf(manga)
                 if (position != -1 && !adapter.isSelected(position)) {
                     adapter.toggleSelection(position)
-                    (recycler.findViewHolderForItemId(manga.id!!) as? LibraryHolder<*>)?.toggleActivation()
+                    (recycler.findViewHolderForItemId(manga.id) as? LibraryHolder<*>)?.toggleActivation()
                 }
             }
         }
@@ -360,7 +348,7 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
         val position = adapter.indexOf(manga)
         if (position != -1) {
             adapter.toggleSelection(position)
-            (recycler.findViewHolderForItemId(manga.id!!) as? LibraryHolder<*>)?.toggleActivation()
+            (recycler.findViewHolderForItemId(manga.id) as? LibraryHolder<*>)?.toggleActivation()
         }
     }
 
@@ -382,7 +370,7 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
             toggleSelection(position)
             true
         } else {
-            openManga(item.manga)
+            openManga(item.manga.toDomainManga()!!)
             false
         }
     }
@@ -417,13 +405,8 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
     // SY -->
     private fun getGroupExtra() = when (controller.presenter.groupType) {
         LibraryGroup.BY_DEFAULT -> null
-        LibraryGroup.BY_SOURCE -> category.name
-        LibraryGroup.BY_STATUS, LibraryGroup.BY_TRACK_STATUS -> category.id.toString()
+        LibraryGroup.BY_SOURCE, LibraryGroup.BY_STATUS, LibraryGroup.BY_TRACK_STATUS -> category.id.toString()
         else -> null
-    }
-
-    override fun onItemReleased(position: Int) {
-        return
     }
 
     override fun shouldMoveItem(fromPosition: Int, toPosition: Int): Boolean {
@@ -438,21 +421,33 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
         }
     }
 
+    private val updateCategory: UpdateCategory by injectLazy()
+
     override fun onItemMove(fromPosition: Int, toPosition: Int) {
         if (fromPosition == toPosition) return
         controller.invalidateActionMode()
         val mangaIds = adapter.currentItems.mapNotNull { it.manga.id }
-        category.mangaOrder = mangaIds
-        if (category.id == 0) {
+        if (category.id == 0L) {
             preferences.defaultMangaOrder().set(mangaIds.joinToString("/"))
         } else {
-            db.insertCategory(category).asRxObservable().subscribe()
+            scope.launch {
+                updateCategory.await(CategoryUpdate(category.id.toLong(), mangaOrder = mangaIds))
+            }
         }
-        if (preferences.categorisedDisplaySettings().get() && category.id != 0) {
+        if (preferences.categorizedDisplaySettings().get() && category.id != 0L) {
             if (SortModeSetting.fromFlag(category.sortMode) != SortModeSetting.DRAG_AND_DROP) {
-                category.sortMode = SortModeSetting.DRAG_AND_DROP.flag
-                category.sortDirection = SortDirectionSetting.ASCENDING.flag
-                db.insertCategory(category).asRxObservable().subscribe()
+                val dbCategory = category.toDbCategory()
+                dbCategory.sortMode = SortModeSetting.DRAG_AND_DROP.flag.toInt()
+                dbCategory.sortDirection = SortDirectionSetting.ASCENDING.flag.toInt()
+                scope.launch {
+                    updateCategory.await(
+                        CategoryUpdate(
+                            id = category.id,
+                            flags = dbCategory.flags.toLong(),
+                            mangaOrder = mangaIds,
+                        ),
+                    )
+                }
             }
         } else if (preferences.librarySortingMode().get() != SortModeSetting.DRAG_AND_DROP) {
             preferences.librarySortingAscending().set(SortDirectionSetting.ASCENDING)
@@ -478,7 +473,7 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
     private fun toggleSelection(position: Int) {
         val item = adapter.getItem(position) ?: return
 
-        controller.setSelection(item.manga, !adapter.isSelected(position))
+        controller.setSelection(item.manga.toDomainManga()!!, !adapter.isSelected(position))
         controller.invalidateActionMode()
     }
 
@@ -490,7 +485,7 @@ class LibraryCategoryView @JvmOverloads constructor(context: Context, attrs: Att
     private fun setSelection(position: Int) {
         val item = adapter.getItem(position) ?: return
 
-        controller.setSelection(item.manga, true)
+        controller.setSelection(item.manga.toDomainManga()!!, true)
         controller.invalidateActionMode()
     }
 }

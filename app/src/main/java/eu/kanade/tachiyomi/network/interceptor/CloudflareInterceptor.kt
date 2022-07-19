@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.lang.launchUI
+import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.WebViewClientCompat
 import eu.kanade.tachiyomi.util.system.WebViewUtil
 import eu.kanade.tachiyomi.util.system.isOutdated
@@ -38,6 +39,13 @@ class CloudflareInterceptor(private val context: Context) : Interceptor {
      * Application class.
      */
     private val initWebView by lazy {
+        // Crashes on some devices. We skip this in some cases since the only impact is slower
+        // WebView init in those rare cases.
+        // See https://bugs.chromium.org/p/chromium/issues/detail?id=1279562
+        if (DeviceUtil.isMiui || Build.VERSION.SDK_INT == Build.VERSION_CODES.S && DeviceUtil.isSamsung) {
+            return@lazy
+        }
+
         WebSettings.getDefaultUserAgent(context)
     }
 
@@ -57,7 +65,7 @@ class CloudflareInterceptor(private val context: Context) : Interceptor {
         val response = chain.proceed(originalRequest)
 
         // Check if Cloudflare anti-bot is on
-        if (response.code != 503 || response.header("Server") !in SERVER_CHECK) {
+        if (response.code !in ERROR_CODES || response.header("Server") !in SERVER_CHECK) {
             return response
         }
 
@@ -69,9 +77,12 @@ class CloudflareInterceptor(private val context: Context) : Interceptor {
             resolveWithWebView(originalRequest, oldCookie)
 
             return chain.proceed(originalRequest)
+        }
+        // Because OkHttp's enqueue only handles IOExceptions, wrap the exception so that
+        // we don't crash the entire app
+        catch (e: CloudflareBypassException) {
+            throw IOException(context.getString(R.string.information_cloudflare_bypass_failure))
         } catch (e: Exception) {
-            // Because OkHttp's enqueue only handles IOExceptions, wrap the exception so that
-            // we don't crash the entire app
             throw IOException(e)
         }
     }
@@ -90,7 +101,6 @@ class CloudflareInterceptor(private val context: Context) : Interceptor {
 
         val origRequestUrl = request.url.toString()
         val headers = request.headers.toMultimap().mapValues { it.value.getOrNull(0) ?: "" }.toMutableMap()
-        headers["X-Requested-With"] = WebViewUtil.REQUESTED_WITH
 
         executor.execute {
             val webview = WebView(context)
@@ -128,10 +138,10 @@ class CloudflareInterceptor(private val context: Context) : Interceptor {
                     errorCode: Int,
                     description: String?,
                     failingUrl: String,
-                    isMainFrame: Boolean
+                    isMainFrame: Boolean,
                 ) {
                     if (isMainFrame) {
-                        if (errorCode == 503) {
+                        if (errorCode in ERROR_CODES) {
                             // Found the Cloudflare challenge page.
                             challengeFound = true
                         } else {
@@ -166,12 +176,15 @@ class CloudflareInterceptor(private val context: Context) : Interceptor {
                 context.toast(R.string.information_webview_outdated, Toast.LENGTH_LONG)
             }
 
-            throw Exception(context.getString(R.string.information_cloudflare_bypass_failure))
+            throw CloudflareBypassException()
         }
     }
 
     companion object {
+        private val ERROR_CODES = listOf(403, 503)
         private val SERVER_CHECK = arrayOf("cloudflare-nginx", "cloudflare")
         private val COOKIE_NAMES = listOf("cf_clearance")
     }
 }
+
+private class CloudflareBypassException : Exception()

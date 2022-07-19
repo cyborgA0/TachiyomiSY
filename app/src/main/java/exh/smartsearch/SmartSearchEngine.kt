@@ -1,23 +1,26 @@
 package exh.smartsearch
 
-import eu.kanade.tachiyomi.data.database.DatabaseHelper
-import eu.kanade.tachiyomi.data.database.models.Manga
+import eu.kanade.domain.manga.interactor.GetManga
+import eu.kanade.domain.manga.interactor.InsertManga
+import eu.kanade.domain.manga.model.Manga
+import eu.kanade.tachiyomi.data.database.models.toDomainManga
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.lang.awaitSingle
-import exh.util.executeOnIO
 import info.debatty.java.stringsimilarity.NormalizedLevenshtein
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
 import uy.kohesive.injekt.injectLazy
 import java.util.Locale
+import eu.kanade.tachiyomi.data.database.models.Manga.Companion as DbManga
 
 class SmartSearchEngine(
-    private val extraSearchParams: String? = null
+    private val extraSearchParams: String? = null,
 ) {
-    private val db: DatabaseHelper by injectLazy()
+    private val getManga: GetManga by injectLazy()
+    private val insertManga: InsertManga by injectLazy()
 
     private val normalizedLevenshtein = NormalizedLevenshtein()
 
@@ -90,7 +93,7 @@ class SmartSearchEngine(
             splitSortedByLargest.take(2),
             splitSortedByLargest.take(1),
             splitCleanedTitle.take(2),
-            splitCleanedTitle.take(1)
+            splitCleanedTitle.take(1),
         )
 
         return searchQueries.map {
@@ -121,7 +124,7 @@ class SmartSearchEngine(
             '(' to ')',
             '[' to ']',
             '<' to '>',
-            '{' to '}'
+            '{' to '}',
         )
         var openingBracketPairs = bracketPairs.mapIndexed { index, (opening, _) ->
             opening to index
@@ -170,15 +173,22 @@ class SmartSearchEngine(
      * @return a manga from the database.
      */
     suspend fun networkToLocalManga(sManga: SManga, sourceId: Long): Manga {
-        var localManga = db.getManga(sManga.url, sourceId).executeOnIO()
+        var localManga = getManga.await(sManga.url, sourceId)
         if (localManga == null) {
-            val newManga = Manga.create(sManga.url, sManga.title, sourceId)
+            val newManga = DbManga.create(sManga.url, sManga.title, sourceId)
             newManga.copyFrom(sManga)
-            val result = db.insertManga(newManga).executeOnIO()
-            newManga.id = result.insertedId()
-            localManga = newManga
+            newManga.id = -1
+            val result = run {
+                val id = insertManga.await(newManga.toDomainManga()!!)
+                getManga.await(id!!)
+            }
+            localManga = result
+        } else if (!localManga.favorite) {
+            // if the manga isn't a favorite, set its display title from source
+            // if it later becomes a favorite, updated title will go to db
+            localManga = localManga.copy(ogTitle = sManga.title)
         }
-        return localManga
+        return localManga!!
     }
 
     companion object {

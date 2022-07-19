@@ -33,7 +33,6 @@
     <string name="action_display">ပြသပုံ</string>
     <string name="action_display_mode">ပြသသည့်ပုံစံ</string>
     <string name="action_migrate">ရွှေ့ပြောင်းသည်</string>
-    <string name="action_open_in_settings">ဆက်တင်တွင်ဖွင့်သည်</string>
     <string name="action_open_in_web_view">WebView တွင်ဖွင့်သည်</string>
     <string name="action_open_in_browser">Browser တွင်ဖွင့်သည်</string>
     <string name="action_resume">ဆက်လုပ်သည်</string>
@@ -71,7 +70,6 @@
     <string name="action_search">ရှာဖွေရန်</string>
     <string name="action_sort_date_added">ထည့်ခဲ့သောရက်စွဲအရ</string>
     <string name="action_sort_latest_chapter">နောက်ဆုံးထွက်အခန်းအရ</string>
-    <string name="action_sort_last_checked">နောက်ဆုံးစစ်ဆေးပြီးသော</string>
     <string name="action_sort_last_read">နောက်ဆုံးဖတ်ခဲ့သော</string>
     <string name="action_sort_total">အခန်းစုစုပေါင်း</string>
     <string name="action_sort_alpha">အက္ခရာစဉ်အလိုက်</string>

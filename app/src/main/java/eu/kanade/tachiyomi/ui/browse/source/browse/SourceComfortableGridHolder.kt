@@ -1,17 +1,13 @@
 package eu.kanade.tachiyomi.ui.browse.source.browse
 
-import android.view.View
 import androidx.core.view.isVisible
-import coil.clear
-import coil.imageLoader
-import coil.request.ImageRequest
-import coil.transition.CrossfadeTransition
+import coil.dispose
 import eu.davidea.flexibleadapter.FlexibleAdapter
+import eu.kanade.domain.manga.model.Manga
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.coil.MangaCoverFetcher
-import eu.kanade.tachiyomi.data.database.models.Manga
 import eu.kanade.tachiyomi.databinding.SourceComfortableGridItemBinding
-import eu.kanade.tachiyomi.widget.StateImageViewTarget
+import eu.kanade.tachiyomi.util.view.loadAutoPause
 import exh.metadata.metadata.MangaDexSearchMetadata
 import exh.metadata.metadata.base.RaisedSearchMetadata
 
@@ -19,14 +15,14 @@ import exh.metadata.metadata.base.RaisedSearchMetadata
  * Class used to hold the displayed data of a manga in the catalogue, like the cover or the title.
  * All the elements from the layout file "item_source_grid" are available in this class.
  *
- * @param view the inflated view for this holder.
+ * @param binding the inflated view for this holder.
  * @param adapter the adapter handling this holder.
  * @constructor creates a new catalogue holder.
  */
-class SourceComfortableGridHolder(private val view: View, private val adapter: FlexibleAdapter<*> /* SY --> */, private val hasTitle: Boolean /* SY <-- */) :
-    SourceHolder<SourceComfortableGridItemBinding>(view, adapter) {
-
-    override val binding = SourceComfortableGridItemBinding.bind(view)
+class SourceComfortableGridHolder(
+    override val binding: SourceComfortableGridItemBinding,
+    adapter: FlexibleAdapter<*>,
+) : SourceHolder<SourceComfortableGridItemBinding>(binding.root, adapter) {
 
     /**
      * Method called from [CatalogueAdapter.onBindViewHolder]. It updates the data for this
@@ -37,18 +33,16 @@ class SourceComfortableGridHolder(private val view: View, private val adapter: F
     override fun onSetValues(manga: Manga) {
         // Set manga title
         binding.title.text = manga.title
-        // SY -->
-        binding.title.isVisible = hasTitle
-        // SY <--
 
         // Set alpha of thumbnail.
         binding.thumbnail.alpha = if (manga.favorite) 0.3f else 1.0f
 
         // For rounded corners
-        binding.badges.clipToOutline = true
+        binding.badges.leftBadges.clipToOutline = true
+        binding.badges.rightBadges.clipToOutline = true
 
         // Set favorite badge
-        binding.favoriteText.isVisible = manga.favorite
+        binding.badges.favoriteText.isVisible = manga.favorite
 
         setImage(manga)
     }
@@ -57,28 +51,21 @@ class SourceComfortableGridHolder(private val view: View, private val adapter: F
     override fun onSetMetadataValues(manga: Manga, metadata: RaisedSearchMetadata) {
         if (metadata is MangaDexSearchMetadata) {
             metadata.followStatus?.let {
-                binding.localText.text = itemView.context.resources.getStringArray(R.array.md_follows_options).asList()[it]
-                binding.localText.isVisible = true
+                binding.badges.localText.text = itemView.context.resources.getStringArray(R.array.md_follows_options).asList()[it]
+                binding.badges.localText.isVisible = true
+            }
+            metadata.relation?.let {
+                binding.badges.localText.setText(it.resId)
+                binding.badges.localText.isVisible = true
             }
         }
     }
     // SY <--
 
     override fun setImage(manga: Manga) {
-        // For rounded corners
-        binding.card.clipToOutline = true
-
-        binding.thumbnail.clear()
-        if (!manga.thumbnail_url.isNullOrEmpty()) {
-            val crossfadeDuration = view.context.imageLoader.defaults.transition.let {
-                if (it is CrossfadeTransition) it.durationMillis else 0
-            }
-            val request = ImageRequest.Builder(view.context)
-                .data(manga)
-                .setParameter(MangaCoverFetcher.USE_CUSTOM_COVER, false)
-                .target(StateImageViewTarget(binding.thumbnail, binding.progress, crossfadeDuration))
-                .build()
-            itemView.context.imageLoader.enqueue(request)
+        binding.thumbnail.dispose()
+        binding.thumbnail.loadAutoPause(manga) {
+            setParameter(MangaCoverFetcher.USE_CUSTOM_COVER, false)
         }
     }
 }
