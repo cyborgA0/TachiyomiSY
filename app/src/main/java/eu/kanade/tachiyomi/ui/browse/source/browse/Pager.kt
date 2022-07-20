@@ -1,12 +1,11 @@
 package eu.kanade.tachiyomi.ui.browse.source.browse
 
 import com.jakewharton.rxrelay.PublishRelay
-import eu.kanade.core.util.asFlow
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.MetadataMangasPage
 import eu.kanade.tachiyomi.source.model.SManga
 import exh.metadata.metadata.base.RaisedSearchMetadata
-import kotlinx.coroutines.flow.Flow
+import rx.Observable
 
 /**
  * A general pager for source requests (latest updates, popular, search)
@@ -18,8 +17,8 @@ abstract class Pager(var currentPage: Int = 1) {
 
     protected val results: PublishRelay</* SY --> */ Triple /* SY <-- */<Int, List<SManga> /* SY --> */, List<RaisedSearchMetadata>? /* SY <-- */>> = PublishRelay.create()
 
-    fun asFlow(): Flow</* SY --> */ Triple /* SY <-- */<Int, List<SManga> /* SY --> */, List<RaisedSearchMetadata>?> /* SY <-- */> {
-        return results.asObservable().asFlow()
+    fun results(): Observable</* SY --> */ Triple /* SY <-- */<Int, List<SManga> /* SY --> */, List<RaisedSearchMetadata>?> /* SY <-- */> {
+        return results.asObservable()
     }
 
     abstract suspend fun requestNextPage()
