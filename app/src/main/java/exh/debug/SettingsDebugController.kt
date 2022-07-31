@@ -16,7 +16,9 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.core.prefs.PreferenceMutableState
 import eu.kanade.presentation.components.Divider
 import eu.kanade.presentation.components.LazyColumn
+import eu.kanade.presentation.components.LoadingScreen
 import eu.kanade.presentation.components.PreferenceRow
 import eu.kanade.presentation.components.SwitchPreference
 import eu.kanade.tachiyomi.ui.base.controller.BasicComposeController
@@ -68,7 +71,8 @@ class SettingsDebugController : BasicComposeController() {
                     it.visibility == KVisibility.PUBLIC
                 }.map {
                     it to it.name.replace("(.)(\\p{Upper})".toRegex(), "$1 $2")
-                        .lowercase(Locale.getDefault()).capitalize(Locale.getDefault())
+                        .lowercase(Locale.getDefault())
+                        .capitalize(Locale.getDefault())
                 }
             }
         }
@@ -77,109 +81,117 @@ class SettingsDebugController : BasicComposeController() {
                 DebugToggles.values().map { DebugToggle(it.name, it.asPref(viewScope), it.default) }
             }
         }
-        if (functions != null) {
-            val scope = rememberCoroutineScope()
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .nestedScroll(nestedScrollInterop),
-            ) {
-                var running by remember { mutableStateOf(false) }
-                var result by remember { mutableStateOf<Pair<String, String>?>(null) }
-                LazyColumn(Modifier.fillMaxSize()) {
-                    item {
-                        Text(
-                            text = "Functions",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(16.dp),
-                        )
-                    }
-                    items(functions.orEmpty()) { (func, name) ->
-                        PreferenceRow(
-                            title = name,
-                            onClick = {
-                                scope.launch(Dispatchers.Default) {
-                                    val text = try {
-                                        running = true
-                                        "Function returned result:\n\n${func.call(DebugFunctions)}"
-                                    } catch (e: Exception) {
-                                        "Function threw exception:\n\n${Log.getStackTraceString(e)}"
-                                    } finally {
-                                        running = false
-                                    }
-                                    result = name to text
-                                }
-                            },
-                        )
-                    }
-                    item {
-                        Divider()
-                    }
-                    item {
-                        Text(
-                            text = "Toggles",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(16.dp),
-                        )
-                    }
-                    items(toggles) { (name, pref, default) ->
-                        SwitchPreference(
-                            preference = pref,
-                            title = name.replace('_', ' ')
-                                .lowercase(Locale.getDefault())
-                                .capitalize(Locale.getDefault()),
-                            subtitleAnnotated = if (pref.value != default) {
-                                AnnotatedString("MODIFIED", SpanStyle(color = Color.Red))
-                            } else null,
-                        )
-                    }
-                    item {
-                        Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
-                    }
+        if (functions == null) {
+            LoadingScreen()
+            return
+        }
+
+        val scope = rememberCoroutineScope()
+        Box(
+            Modifier
+                .fillMaxSize()
+                .nestedScroll(nestedScrollInterop),
+        ) {
+            var running by remember { mutableStateOf(false) }
+            var result by remember { mutableStateOf<Pair<String, String>?>(null) }
+            LazyColumn(Modifier.fillMaxSize()) {
+                item {
+                    Text(
+                        text = "Functions",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(16.dp),
+                    )
                 }
-                AnimatedVisibility(
-                    running && result == null,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(color = Color.White.copy(alpha = 0.3F))
-                            .pointerInput(running && result == null) {
-                                forEachGesture {
-                                    awaitPointerEventScope {
-                                        waitForUpOrCancellation()?.consume()
-                                    }
+                items(functions.orEmpty()) { (func, name) ->
+                    PreferenceRow(
+                        title = name,
+                        onClick = {
+                            scope.launch(Dispatchers.Default) {
+                                val text = try {
+                                    running = true
+                                    "Function returned result:\n\n${func.call(DebugFunctions)}"
+                                } catch (e: Exception) {
+                                    "Function threw exception:\n\n${Log.getStackTraceString(e)}"
+                                } finally {
+                                    running = false
                                 }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                }
-                if (result != null) {
-                    AlertDialog(
-                        onDismissRequest = { result = null },
-                        title = {
-                            Text(text = result?.first.orEmpty())
-                        },
-                        confirmButton = {},
-                        text = {
-                            SelectionContainer {
-                                Text(text = result?.second.orEmpty())
+                                result = name to text
                             }
                         },
                     )
                 }
+                item {
+                    Divider()
+                }
+                item {
+                    Text(
+                        text = "Toggles",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
+                items(toggles) { (name, pref, default) ->
+                    SwitchPreference(
+                        preference = pref,
+                        title = name.replace('_', ' ')
+                            .lowercase(Locale.getDefault())
+                            .capitalize(Locale.getDefault()),
+                        subtitleAnnotated = if (pref.value != default) {
+                            AnnotatedString("MODIFIED", SpanStyle(color = Color.Red))
+                        } else null,
+                    )
+                }
+                item {
+                    Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+                }
             }
-        } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+            AnimatedVisibility(
+                running && result == null,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(color = Color.White.copy(alpha = 0.3F))
+                        .pointerInput(running && result == null) {
+                            forEachGesture {
+                                awaitPointerEventScope {
+                                    waitForUpOrCancellation()?.consume()
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
             }
+
+            ResultTextDialog(
+                result = result,
+                onDismissRequest = { result = null },
+            )
+        }
+    }
+
+    @Composable
+    private fun ResultTextDialog(result: Pair<String, String>?, onDismissRequest: () -> Unit) {
+        if (result != null) {
+            AlertDialog(
+                onDismissRequest = onDismissRequest,
+                title = {
+                    Text(text = result.first)
+                },
+                confirmButton = {},
+                text = {
+                    SelectionContainer(Modifier.verticalScroll(rememberScrollState())) {
+                        Text(text = result.second)
+                    }
+                },
+            )
         }
     }
 

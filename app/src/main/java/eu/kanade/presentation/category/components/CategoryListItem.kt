@@ -1,7 +1,9 @@
 package eu.kanade.presentation.category.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDropDown
@@ -21,22 +23,31 @@ import eu.kanade.presentation.util.horizontalPadding
 
 @Composable
 fun CategoryListItem(
+    modifier: Modifier = Modifier,
     category: Category,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onMoveUp: (Category) -> Unit,
     onMoveDown: (Category) -> Unit,
-    onRename: (Category) -> Unit,
-    onDelete: (Category) -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
 ) {
-    ElevatedCard {
+    ElevatedCard(
+        modifier = modifier,
+    ) {
         Row(
             modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onRename() }
                 .padding(start = horizontalPadding, top = horizontalPadding, end = horizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(imageVector = Icons.Outlined.Label, contentDescription = "")
-            Text(text = category.name, modifier = Modifier.padding(start = horizontalPadding))
+            Text(
+                text = category.name,
+                modifier = Modifier
+                    .padding(start = horizontalPadding),
+            )
         }
         Row {
             IconButton(
@@ -52,10 +63,10 @@ fun CategoryListItem(
                 Icon(imageVector = Icons.Outlined.ArrowDropDown, contentDescription = "")
             }
             Spacer(modifier = Modifier.weight(1f))
-            IconButton(onClick = { onRename(category) }) {
+            IconButton(onClick = onRename) {
                 Icon(imageVector = Icons.Outlined.Edit, contentDescription = "")
             }
-            IconButton(onClick = { onDelete(category) }) {
+            IconButton(onClick = onDelete) {
                 Icon(imageVector = Icons.Outlined.Delete, contentDescription = "")
             }
         }

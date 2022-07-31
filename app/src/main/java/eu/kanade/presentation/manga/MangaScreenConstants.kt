@@ -9,13 +9,6 @@ enum class DownloadAction {
     ALL_CHAPTERS
 }
 
-enum class ChapterDownloadAction {
-    START,
-    START_NOW,
-    CANCEL,
-    DELETE,
-}
-
 enum class EditCoverAction {
     EDIT,
     DELETE,
@@ -33,6 +26,7 @@ enum class MangaScreenItem {
 
     // SY -->
     INFO_BUTTONS,
+    CHAPTER_PREVIEW,
 
     // SY <--
     CHAPTER_HEADER,

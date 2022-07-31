@@ -44,13 +44,15 @@ import eu.kanade.tachiyomi.data.coil.DomainMangaKeyer
 import eu.kanade.tachiyomi.data.coil.MangaCoverFetcher
 import eu.kanade.tachiyomi.data.coil.MangaCoverKeyer
 import eu.kanade.tachiyomi.data.coil.MangaKeyer
+import eu.kanade.tachiyomi.data.coil.PagePreviewFetcher
+import eu.kanade.tachiyomi.data.coil.PagePreviewKeyer
 import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.data.preference.PreferenceValues
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.ui.base.delegate.SecureActivityDelegate
-import eu.kanade.tachiyomi.util.preference.asImmediateFlow
+import eu.kanade.tachiyomi.util.preference.asHotFlow
 import eu.kanade.tachiyomi.util.system.AuthenticatorUtil
 import eu.kanade.tachiyomi.util.system.WebViewUtil
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
@@ -76,6 +78,7 @@ import uy.kohesive.injekt.injectLazy
 import java.io.File
 import java.security.Security
 import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.time.Duration.Companion.days
 
@@ -146,7 +149,7 @@ class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
             .launchIn(ProcessLifecycleOwner.get().lifecycleScope)
 
         preferences.themeMode()
-            .asImmediateFlow {
+            .asHotFlow {
                 AppCompatDelegate.setDefaultNightMode(
                     when (it) {
                         PreferenceValues.ThemeMode.light -> AppCompatDelegate.MODE_NIGHT_NO
@@ -178,6 +181,10 @@ class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
                 add(MangaKeyer())
                 add(DomainMangaKeyer())
                 add(MangaCoverKeyer())
+                // SY -->
+                add(PagePreviewKeyer())
+                add(PagePreviewFetcher.Factory(lazy(callFactoryInit), lazy(diskCacheInit)))
+                // SY <--
             }
             callFactory(callFactoryInit)
             diskCache(diskCacheInit)
@@ -194,6 +201,7 @@ class App : Application(), DefaultLifecycleObserver, ImageLoaderFactory {
     }
 
     override fun onStop(owner: LifecycleOwner) {
+        preferences.lastAppClosed().set(Date().time)
         if (!AuthenticatorUtil.isAuthenticating && preferences.lockAppAfter().get() >= 0) {
             SecureActivityDelegate.locked = true
         }

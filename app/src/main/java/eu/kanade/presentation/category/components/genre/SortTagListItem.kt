@@ -2,6 +2,7 @@ package eu.kanade.presentation.category.components.genre
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDropDown
@@ -19,17 +20,21 @@ import eu.kanade.presentation.util.horizontalPadding
 
 @Composable
 fun SortTagListItem(
+    modifier: Modifier,
     tag: String,
     index: Int,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
-    onMoveUp: (String, Int) -> Unit,
-    onMoveDown: (String, Int) -> Unit,
-    onDelete: (String) -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onDelete: () -> Unit,
 ) {
-    ElevatedCard {
+    ElevatedCard(
+        modifier = modifier,
+    ) {
         Row(
             modifier = Modifier
+                .fillMaxWidth()
                 .padding(start = horizontalPadding, top = horizontalPadding, end = horizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -38,19 +43,19 @@ fun SortTagListItem(
         }
         Row {
             IconButton(
-                onClick = { onMoveUp(tag, index) },
+                onClick = onMoveUp,
                 enabled = canMoveUp,
             ) {
                 Icon(imageVector = Icons.Outlined.ArrowDropUp, contentDescription = "")
             }
             IconButton(
-                onClick = { onMoveDown(tag, index) },
+                onClick = onMoveDown,
                 enabled = canMoveDown,
             ) {
                 Icon(imageVector = Icons.Outlined.ArrowDropDown, contentDescription = "")
             }
             Spacer(modifier = Modifier.weight(1f))
-            IconButton(onClick = { onDelete(tag) }) {
+            IconButton(onClick = onDelete) {
                 Icon(imageVector = Icons.Outlined.Delete, contentDescription = "")
             }
         }

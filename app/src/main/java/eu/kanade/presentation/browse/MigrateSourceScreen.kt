@@ -13,51 +13,54 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.domain.source.model.Source
 import eu.kanade.presentation.browse.components.BaseSourceItem
 import eu.kanade.presentation.browse.components.SourceIcon
+import eu.kanade.presentation.components.Badge
+import eu.kanade.presentation.components.BadgeGroup
 import eu.kanade.presentation.components.EmptyScreen
-import eu.kanade.presentation.components.ItemBadges
 import eu.kanade.presentation.components.LoadingScreen
 import eu.kanade.presentation.components.ScrollbarLazyColumn
 import eu.kanade.presentation.theme.header
+import eu.kanade.presentation.util.bottomNavPaddingValues
 import eu.kanade.presentation.util.horizontalPadding
 import eu.kanade.presentation.util.plus
 import eu.kanade.presentation.util.topPaddingValues
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.ui.browse.migration.sources.MigrateSourceState
 import eu.kanade.tachiyomi.ui.browse.migration.sources.MigrationSourcesPresenter
 import eu.kanade.tachiyomi.util.system.LocaleHelper
+import eu.kanade.tachiyomi.util.system.copyToClipboard
 
 @Composable
 fun MigrateSourceScreen(
     nestedScrollInterop: NestedScrollConnection,
     presenter: MigrationSourcesPresenter,
     onClickItem: (Source) -> Unit,
-    onLongClickItem: (Source) -> Unit,
     // SY -->
     onClickAll: (Source) -> Unit,
     // SY <--
 ) {
-    val state by presenter.state.collectAsState()
-    when (state) {
-        is MigrateSourceState.Loading -> LoadingScreen()
-        is MigrateSourceState.Error -> Text(text = (state as MigrateSourceState.Error).error.message!!)
-        is MigrateSourceState.Success ->
+    val context = LocalContext.current
+    when {
+        presenter.isLoading -> LoadingScreen()
+        presenter.isEmpty -> EmptyScreen(textResource = R.string.information_empty_library)
+        else ->
             MigrateSourceList(
                 nestedScrollInterop = nestedScrollInterop,
-                list = (state as MigrateSourceState.Success).sources,
+                list = presenter.items,
                 onClickItem = onClickItem,
-                onLongClickItem = onLongClickItem,
+                onLongClickItem = { source ->
+                    val sourceId = source.id.toString()
+                    context.copyToClipboard(sourceId, sourceId)
+                },
                 // SY -->
                 onClickAll = onClickAll,
                 // SY <--
@@ -75,14 +78,9 @@ fun MigrateSourceList(
     onClickAll: (Source) -> Unit,
     // SY <--
 ) {
-    if (list.isEmpty()) {
-        EmptyScreen(textResource = R.string.information_empty_library)
-        return
-    }
-
     ScrollbarLazyColumn(
         modifier = Modifier.nestedScroll(nestedScrollInterop),
-        contentPadding = WindowInsets.navigationBars.asPaddingValues() + topPaddingValues,
+        contentPadding = bottomNavPaddingValues + WindowInsets.navigationBars.asPaddingValues() + topPaddingValues,
     ) {
         item(key = "title") {
             Text(
@@ -133,7 +131,9 @@ fun MigrateSourceItem(
         onLongClickItem = onLongClickItem,
         icon = { SourceIcon(source = source) },
         action = {
-            ItemBadges(primaryText = "$count")
+            BadgeGroup {
+                Badge(text = "$count")
+            }
             // SY -->
             TextButton(onClick = onClickAll) {
                 Text(

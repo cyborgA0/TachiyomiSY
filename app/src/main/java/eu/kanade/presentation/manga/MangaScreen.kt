@@ -6,20 +6,22 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -37,8 +39,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -47,22 +47,25 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import eu.kanade.domain.chapter.model.Chapter
+import eu.kanade.presentation.components.ChapterDownloadAction
 import eu.kanade.presentation.components.ExtendedFloatingActionButton
 import eu.kanade.presentation.components.LazyColumn
+import eu.kanade.presentation.components.MangaBottomActionMenu
 import eu.kanade.presentation.components.Scaffold
 import eu.kanade.presentation.components.SwipeRefreshIndicator
 import eu.kanade.presentation.components.VerticalFastScroller
 import eu.kanade.presentation.manga.components.ChapterHeader
 import eu.kanade.presentation.manga.components.ExpandableMangaDescription
 import eu.kanade.presentation.manga.components.MangaActionRow
-import eu.kanade.presentation.manga.components.MangaBottomActionMenu
+import eu.kanade.presentation.manga.components.MangaAppBar
 import eu.kanade.presentation.manga.components.MangaChapterListItem
 import eu.kanade.presentation.manga.components.MangaInfoBox
 import eu.kanade.presentation.manga.components.MangaInfoButtons
-import eu.kanade.presentation.manga.components.MangaSmallAppBar
+import eu.kanade.presentation.manga.components.PagePreviews
 import eu.kanade.presentation.manga.components.SearchMetadataChips
 import eu.kanade.presentation.util.isScrolledToEnd
 import eu.kanade.presentation.util.isScrollingUp
@@ -74,6 +77,7 @@ import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.ui.manga.ChapterItem
 import eu.kanade.tachiyomi.ui.manga.MangaScreenState
+import eu.kanade.tachiyomi.ui.manga.PagePreviewState
 import exh.source.MERGED_SOURCE_ID
 import exh.source.getMainSource
 
@@ -102,18 +106,26 @@ fun MangaScreen(
     onDownloadActionClicked: ((DownloadAction) -> Unit)?,
     onEditCategoryClicked: (() -> Unit)?,
     onMigrateClicked: (() -> Unit)?,
+    // SY -->
     onMetadataViewerClicked: () -> Unit,
     onEditInfoClicked: () -> Unit,
     onRecommendClicked: () -> Unit,
     onMergedSettingsClicked: () -> Unit,
     onMergeClicked: () -> Unit,
     onMergeWithAnotherClicked: () -> Unit,
+    onMorePreviewsClicked: () -> Unit,
+    // SY <--
 
     // For bottom action menu
     onMultiBookmarkClicked: (List<Chapter>, bookmarked: Boolean) -> Unit,
     onMultiMarkAsReadClicked: (List<Chapter>, markAsRead: Boolean) -> Unit,
     onMarkPreviousAsReadClicked: (Chapter) -> Unit,
     onMultiDeleteClicked: (List<Chapter>) -> Unit,
+
+    // Chapter selection
+    onChapterSelected: (ChapterItem, Boolean, Boolean, Boolean) -> Unit,
+    onAllChapterSelected: (Boolean) -> Unit,
+    onInvertSelection: () -> Unit,
 ) {
     if (windowWidthSizeClass == WindowWidthSizeClass.Compact) {
         MangaScreenSmallImpl(
@@ -135,16 +147,22 @@ fun MangaScreen(
             onDownloadActionClicked = onDownloadActionClicked,
             onEditCategoryClicked = onEditCategoryClicked,
             onMigrateClicked = onMigrateClicked,
+            // SY -->
             onMetadataViewerClicked = onMetadataViewerClicked,
             onEditInfoClicked = onEditInfoClicked,
             onRecommendClicked = onRecommendClicked,
             onMergedSettingsClicked = onMergedSettingsClicked,
             onMergeClicked = onMergeClicked,
             onMergeWithAnotherClicked = onMergeWithAnotherClicked,
+            onMorePreviewsClicked = onMorePreviewsClicked,
+            // SY <--
             onMultiBookmarkClicked = onMultiBookmarkClicked,
             onMultiMarkAsReadClicked = onMultiMarkAsReadClicked,
             onMarkPreviousAsReadClicked = onMarkPreviousAsReadClicked,
             onMultiDeleteClicked = onMultiDeleteClicked,
+            onChapterSelected = onChapterSelected,
+            onAllChapterSelected = onAllChapterSelected,
+            onInvertSelection = onInvertSelection,
         )
     } else {
         MangaScreenLargeImpl(
@@ -167,16 +185,22 @@ fun MangaScreen(
             onDownloadActionClicked = onDownloadActionClicked,
             onEditCategoryClicked = onEditCategoryClicked,
             onMigrateClicked = onMigrateClicked,
+            // SY -->
             onMetadataViewerClicked = onMetadataViewerClicked,
             onEditInfoClicked = onEditInfoClicked,
             onRecommendClicked = onRecommendClicked,
             onMergedSettingsClicked = onMergedSettingsClicked,
             onMergeClicked = onMergeClicked,
             onMergeWithAnotherClicked = onMergeWithAnotherClicked,
+            onMorePreviewsClicked = onMorePreviewsClicked,
+            // SY <--
             onMultiBookmarkClicked = onMultiBookmarkClicked,
             onMultiMarkAsReadClicked = onMultiMarkAsReadClicked,
             onMarkPreviousAsReadClicked = onMarkPreviousAsReadClicked,
             onMultiDeleteClicked = onMultiDeleteClicked,
+            onChapterSelected = onChapterSelected,
+            onAllChapterSelected = onAllChapterSelected,
+            onInvertSelection = onInvertSelection,
         )
     }
 }
@@ -205,33 +229,39 @@ private fun MangaScreenSmallImpl(
     onDownloadActionClicked: ((DownloadAction) -> Unit)?,
     onEditCategoryClicked: (() -> Unit)?,
     onMigrateClicked: (() -> Unit)?,
+    // SY -->
     onMetadataViewerClicked: () -> Unit,
     onEditInfoClicked: () -> Unit,
     onRecommendClicked: () -> Unit,
     onMergedSettingsClicked: () -> Unit,
     onMergeClicked: () -> Unit,
     onMergeWithAnotherClicked: () -> Unit,
+    onMorePreviewsClicked: () -> Unit,
+    // SY <--
 
     // For bottom action menu
     onMultiBookmarkClicked: (List<Chapter>, bookmarked: Boolean) -> Unit,
     onMultiMarkAsReadClicked: (List<Chapter>, markAsRead: Boolean) -> Unit,
     onMarkPreviousAsReadClicked: (Chapter) -> Unit,
     onMultiDeleteClicked: (List<Chapter>) -> Unit,
+
+    // Chapter selection
+    onChapterSelected: (ChapterItem, Boolean, Boolean, Boolean) -> Unit,
+    onAllChapterSelected: (Boolean) -> Unit,
+    onInvertSelection: () -> Unit,
 ) {
     val layoutDirection = LocalLayoutDirection.current
     val chapterListState = rememberLazyListState()
 
     val insetPadding = WindowInsets.systemBars.only(WindowInsetsSides.Horizontal).asPaddingValues()
     val chapters = remember(state) { state.processedChapters.toList() }
-    val selected = remember(chapters) { emptyList<ChapterItem>().toMutableStateList() }
-    val selectedPositions = remember(chapters) { arrayOf(-1, -1) } // first and last selected index in list
     // SY -->
     val metadataSource = remember(state.source.id) { state.source.getMainSource<MetadataSource<*, *>>() }
     // SY <--
 
     val internalOnBackPressed = {
-        if (selected.isNotEmpty()) {
-            selected.clear()
+        if (chapters.any { it.selected }) {
+            onAllChapterSelected(false)
         } else {
             onBackClicked()
         }
@@ -254,7 +284,7 @@ private fun MangaScreenSmallImpl(
             val animatedBgAlpha by animateFloatAsState(
                 if (firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset > 0) 1f else 0f,
             )
-            MangaSmallAppBar(
+            MangaAppBar(
                 title = state.manga.title,
                 titleAlphaProvider = { animatedTitleAlpha },
                 backgroundAlphaProvider = { animatedBgAlpha },
@@ -273,21 +303,14 @@ private fun MangaScreenSmallImpl(
                 showMergeSettings = state.manga.source == MERGED_SOURCE_ID,
                 onMergedSettingsClicked = onMergedSettingsClicked,
                 // SY <--
-                actionModeCounter = selected.size,
-                onSelectAll = {
-                    selected.clear()
-                    selected.addAll(chapters)
-                },
-                onInvertSelection = {
-                    val toSelect = chapters - selected
-                    selected.clear()
-                    selected.addAll(toSelect)
-                },
+                actionModeCounter = chapters.count { it.selected },
+                onSelectAll = { onAllChapterSelected(true) },
+                onInvertSelection = { onInvertSelection() },
             )
         },
         bottomBar = {
             SharedMangaBottomActionMenu(
-                selected = selected,
+                selected = chapters.filter { it.selected },
                 onMultiBookmarkClicked = onMultiBookmarkClicked,
                 onMultiMarkAsReadClicked = onMultiMarkAsReadClicked,
                 onMarkPreviousAsReadClicked = onMarkPreviousAsReadClicked,
@@ -299,7 +322,7 @@ private fun MangaScreenSmallImpl(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         floatingActionButton = {
             AnimatedVisibility(
-                visible = chapters.any { !it.chapter.read } && selected.isEmpty(),
+                visible = chapters.any { !it.chapter.read } && chapters.none { it.selected },
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
@@ -331,6 +354,7 @@ private fun MangaScreenSmallImpl(
         SwipeRefresh(
             state = rememberSwipeRefreshState(state.isRefreshingInfo || state.isRefreshingChapter),
             onRefresh = onRefresh,
+            swipeEnabled = !chapters.any { it.selected },
             indicatorPadding = contentPadding,
             indicator = { s, trigger ->
                 SwipeRefreshIndicator(
@@ -359,7 +383,7 @@ private fun MangaScreenSmallImpl(
                             title = state.manga.title,
                             author = state.manga.author,
                             artist = state.manga.artist,
-                            sourceName = remember { state.source.getNameForMangaInfo() },
+                            sourceName = remember { state.source.getNameForMangaInfo(state.mergedData) },
                             isStubSource = remember { state.source is SourceManager.StubSource },
                             coverDataProvider = { state.manga },
                             status = state.manga.status,
@@ -432,6 +456,15 @@ private fun MangaScreenSmallImpl(
                             )
                         }
                     }
+
+                    if (state.pagePreviewsState !is PagePreviewState.Unused) {
+                        item(
+                            key = MangaScreenItem.CHAPTER_PREVIEW,
+                            contentType = MangaScreenItem.CHAPTER_PREVIEW,
+                        ) {
+                            PagePreviews(state.pagePreviewsState, onMorePreviewsClicked)
+                        }
+                    }
                     // SY <--
 
                     item(
@@ -447,10 +480,9 @@ private fun MangaScreenSmallImpl(
 
                     sharedChapterItems(
                         chapters = chapters,
-                        selected = selected,
-                        selectedPositions = selectedPositions,
                         onChapterClicked = onChapterClicked,
                         onDownloadChapter = onDownloadChapter,
+                        onChapterSelected = onChapterSelected,
                     )
                 }
             }
@@ -483,21 +515,31 @@ fun MangaScreenLargeImpl(
     onDownloadActionClicked: ((DownloadAction) -> Unit)?,
     onEditCategoryClicked: (() -> Unit)?,
     onMigrateClicked: (() -> Unit)?,
+    // SY -->
     onMetadataViewerClicked: () -> Unit,
     onEditInfoClicked: () -> Unit,
     onRecommendClicked: () -> Unit,
     onMergedSettingsClicked: () -> Unit,
     onMergeClicked: () -> Unit,
     onMergeWithAnotherClicked: () -> Unit,
+    onMorePreviewsClicked: () -> Unit,
+    // SY <--
 
     // For bottom action menu
     onMultiBookmarkClicked: (List<Chapter>, bookmarked: Boolean) -> Unit,
     onMultiMarkAsReadClicked: (List<Chapter>, markAsRead: Boolean) -> Unit,
     onMarkPreviousAsReadClicked: (Chapter) -> Unit,
     onMultiDeleteClicked: (List<Chapter>) -> Unit,
+
+    // Chapter selection
+    onChapterSelected: (ChapterItem, Boolean, Boolean, Boolean) -> Unit,
+    onAllChapterSelected: (Boolean) -> Unit,
+    onInvertSelection: () -> Unit,
 ) {
     val layoutDirection = LocalLayoutDirection.current
     val density = LocalDensity.current
+
+    val chapters = remember(state) { state.processedChapters.toList() }
 
     // SY -->
     val metadataSource = remember(state.source.id) { state.source.getMainSource<MetadataSource<*, *>>() }
@@ -508,6 +550,7 @@ fun MangaScreenLargeImpl(
     SwipeRefresh(
         state = rememberSwipeRefreshState(state.isRefreshingInfo || state.isRefreshingChapter),
         onRefresh = onRefresh,
+        swipeEnabled = !chapters.any { it.selected },
         indicatorPadding = PaddingValues(
             start = insetPadding.calculateStartPadding(layoutDirection),
             top = with(density) { topBarHeight.toDp() },
@@ -522,13 +565,10 @@ fun MangaScreenLargeImpl(
         },
     ) {
         val chapterListState = rememberLazyListState()
-        val chapters = remember(state) { state.processedChapters.toList() }
-        val selected = remember(chapters) { emptyList<ChapterItem>().toMutableStateList() }
-        val selectedPositions = remember(chapters) { arrayOf(-1, -1) } // first and last selected index in list
 
         val internalOnBackPressed = {
-            if (selected.isNotEmpty()) {
-                selected.clear()
+            if (chapters.any { it.selected }) {
+                onAllChapterSelected(false)
             } else {
                 onBackClicked()
             }
@@ -538,10 +578,10 @@ fun MangaScreenLargeImpl(
         Scaffold(
             modifier = Modifier.padding(insetPadding),
             topBar = {
-                MangaSmallAppBar(
+                MangaAppBar(
                     modifier = Modifier.onSizeChanged { onTopBarHeightChanged(it.height) },
                     title = state.manga.title,
-                    titleAlphaProvider = { if (selected.isEmpty()) 0f else 1f },
+                    titleAlphaProvider = { if (chapters.any { it.selected }) 1f else 0f },
                     backgroundAlphaProvider = { 1f },
                     incognitoMode = state.isIncognitoMode,
                     downloadedOnlyMode = state.isDownloadedOnlyMode,
@@ -550,22 +590,17 @@ fun MangaScreenLargeImpl(
                     onDownloadClicked = onDownloadActionClicked,
                     onEditCategoryClicked = onEditCategoryClicked,
                     onMigrateClicked = onMigrateClicked,
+                    // SY -->
                     showEditInfo = state.manga.favorite,
                     onEditInfoClicked = onEditInfoClicked,
                     showRecommends = state.showRecommendationsInOverflow,
                     onRecommendClicked = onRecommendClicked,
                     showMergeSettings = state.manga.source == MERGED_SOURCE_ID,
                     onMergedSettingsClicked = onMergedSettingsClicked,
-                    actionModeCounter = selected.size,
-                    onSelectAll = {
-                        selected.clear()
-                        selected.addAll(chapters)
-                    },
-                    onInvertSelection = {
-                        val toSelect = chapters - selected
-                        selected.clear()
-                        selected.addAll(toSelect)
-                    },
+                    // SY <--
+                    actionModeCounter = chapters.count { it.selected },
+                    onSelectAll = { onAllChapterSelected(true) },
+                    onInvertSelection = { onInvertSelection() },
                 )
             },
             bottomBar = {
@@ -574,7 +609,7 @@ fun MangaScreenLargeImpl(
                     contentAlignment = Alignment.BottomEnd,
                 ) {
                     SharedMangaBottomActionMenu(
-                        selected = selected,
+                        selected = chapters.filter { it.selected },
                         onMultiBookmarkClicked = onMultiBookmarkClicked,
                         onMultiMarkAsReadClicked = onMultiMarkAsReadClicked,
                         onMarkPreviousAsReadClicked = onMarkPreviousAsReadClicked,
@@ -587,7 +622,7 @@ fun MangaScreenLargeImpl(
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             floatingActionButton = {
                 AnimatedVisibility(
-                    visible = chapters.any { !it.chapter.read } && selected.isEmpty(),
+                    visible = chapters.any { !it.chapter.read } && chapters.none { it.selected },
                     enter = fadeIn(),
                     exit = fadeOut(),
                 ) {
@@ -609,12 +644,16 @@ fun MangaScreenLargeImpl(
                 }
             },
         ) { contentPadding ->
-            Row {
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val withNavBarContentPadding = contentPadding +
                     WindowInsets.navigationBars.only(WindowInsetsSides.Bottom).asPaddingValues()
+                val firstWidth = (maxWidth / 2).coerceAtMost(450.dp)
+                val secondWidth = maxWidth - firstWidth
+
                 Column(
                     modifier = Modifier
-                        .weight(1f)
+                        .align(Alignment.TopStart)
+                        .width(firstWidth)
                         .verticalScroll(rememberScrollState())
                         .padding(bottom = withNavBarContentPadding.calculateBottomPadding()),
                 ) {
@@ -624,7 +663,7 @@ fun MangaScreenLargeImpl(
                         title = state.manga.title,
                         author = state.manga.author,
                         artist = state.manga.artist,
-                        sourceName = remember { state.source.getNameForMangaInfo() },
+                        sourceName = remember { state.source.getNameForMangaInfo(state.mergedData) },
                         isStubSource = remember { state.source is SourceManager.StubSource },
                         coverDataProvider = { state.manga },
                         status = state.manga.status,
@@ -670,13 +709,17 @@ fun MangaScreenLargeImpl(
                             onMergeWithAnotherClicked = onMergeWithAnotherClicked,
                         )
                     }
+                    if (state.pagePreviewsState !is PagePreviewState.Unused) {
+                        PagePreviews(state.pagePreviewsState, onMorePreviewsClicked)
+                    }
                     // SY <--
                 }
 
-                val chaptersWeight = if (windowWidthSizeClass == WindowWidthSizeClass.Medium) 1f else 2f
                 VerticalFastScroller(
                     listState = chapterListState,
-                    modifier = Modifier.weight(chaptersWeight),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .width(secondWidth),
                     topContentPadding = withNavBarContentPadding.calculateTopPadding(),
                     endContentPadding = withNavBarContentPadding.calculateEndPadding(layoutDirection),
                 ) {
@@ -698,10 +741,9 @@ fun MangaScreenLargeImpl(
 
                         sharedChapterItems(
                             chapters = chapters,
-                            selected = selected,
-                            selectedPositions = selectedPositions,
                             onChapterClicked = onChapterClicked,
                             onDownloadChapter = onDownloadChapter,
+                            onChapterSelected = onChapterSelected,
                         )
                     }
                 }
@@ -712,7 +754,7 @@ fun MangaScreenLargeImpl(
 
 @Composable
 private fun SharedMangaBottomActionMenu(
-    selected: SnapshotStateList<ChapterItem>,
+    selected: List<ChapterItem>,
     onMultiBookmarkClicked: (List<Chapter>, bookmarked: Boolean) -> Unit,
     onMultiMarkAsReadClicked: (List<Chapter>, markAsRead: Boolean) -> Unit,
     onMarkPreviousAsReadClicked: (Chapter) -> Unit,
@@ -725,33 +767,26 @@ private fun SharedMangaBottomActionMenu(
         modifier = Modifier.fillMaxWidth(fillFraction),
         onBookmarkClicked = {
             onMultiBookmarkClicked.invoke(selected.map { it.chapter }, true)
-            selected.clear()
         }.takeIf { selected.any { !it.chapter.bookmark } },
         onRemoveBookmarkClicked = {
             onMultiBookmarkClicked.invoke(selected.map { it.chapter }, false)
-            selected.clear()
         }.takeIf { selected.all { it.chapter.bookmark } },
         onMarkAsReadClicked = {
             onMultiMarkAsReadClicked(selected.map { it.chapter }, true)
-            selected.clear()
         }.takeIf { selected.any { !it.chapter.read } },
         onMarkAsUnreadClicked = {
             onMultiMarkAsReadClicked(selected.map { it.chapter }, false)
-            selected.clear()
         }.takeIf { selected.any { it.chapter.read } },
         onMarkPreviousAsReadClicked = {
             onMarkPreviousAsReadClicked(selected[0].chapter)
-            selected.clear()
         }.takeIf { selected.size == 1 },
         onDownloadClicked = {
             onDownloadChapter!!(selected.toList(), ChapterDownloadAction.START)
-            selected.clear()
         }.takeIf {
             onDownloadChapter != null && selected.any { it.downloadState != Download.State.DOWNLOADED }
         },
         onDeleteClicked = {
             onMultiDeleteClicked(selected.map { it.chapter })
-            selected.clear()
         }.takeIf {
             onDownloadChapter != null && selected.any { it.downloadState == Download.State.DOWNLOADED }
         },
@@ -760,10 +795,9 @@ private fun SharedMangaBottomActionMenu(
 
 private fun LazyListScope.sharedChapterItems(
     chapters: List<ChapterItem>,
-    selected: SnapshotStateList<ChapterItem>,
-    selectedPositions: Array<Int>,
     onChapterClicked: (Chapter) -> Unit,
     onDownloadChapter: ((List<ChapterItem>, ChapterDownloadAction) -> Unit)?,
+    onChapterSelected: (ChapterItem, Boolean, Boolean, Boolean) -> Unit,
 ) {
     items(
         items = chapters,
@@ -778,24 +812,18 @@ private fun LazyListScope.sharedChapterItems(
             scanlator = chapterItem.chapter.scanlator.takeIf { !it.isNullOrBlank() },
             read = chapterItem.chapter.read,
             bookmark = chapterItem.chapter.bookmark,
-            selected = selected.contains(chapterItem),
+            selected = chapterItem.selected,
             downloadStateProvider = { chapterItem.downloadState },
             downloadProgressProvider = { chapterItem.downloadProgress },
             onLongClick = {
-                val dispatched = onChapterItemLongClick(
-                    chapterItem = chapterItem,
-                    selected = selected,
-                    chapters = chapters,
-                    selectedPositions = selectedPositions,
-                )
-                if (dispatched) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onChapterSelected(chapterItem, !chapterItem.selected, true, true)
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             },
             onClick = {
                 onChapterItemClick(
                     chapterItem = chapterItem,
-                    selected = selected,
                     chapters = chapters,
-                    selectedPositions = selectedPositions,
+                    onToggleSelection = { onChapterSelected(chapterItem, !chapterItem.selected, true, false) },
                     onChapterClicked = onChapterClicked,
                 )
             },
@@ -806,72 +834,15 @@ private fun LazyListScope.sharedChapterItems(
     }
 }
 
-private fun onChapterItemLongClick(
-    chapterItem: ChapterItem,
-    selected: MutableList<ChapterItem>,
-    chapters: List<ChapterItem>,
-    selectedPositions: Array<Int>,
-): Boolean {
-    if (!selected.contains(chapterItem)) {
-        val selectedIndex = chapters.indexOf(chapterItem)
-        if (selected.isEmpty()) {
-            selected.add(chapterItem)
-            selectedPositions[0] = selectedIndex
-            selectedPositions[1] = selectedIndex
-            return true
-        }
-
-        // Try to select the items in-between when possible
-        val range: IntRange
-        if (selectedIndex < selectedPositions[0]) {
-            range = selectedIndex until selectedPositions[0]
-            selectedPositions[0] = selectedIndex
-        } else if (selectedIndex > selectedPositions[1]) {
-            range = (selectedPositions[1] + 1)..selectedIndex
-            selectedPositions[1] = selectedIndex
-        } else {
-            // Just select itself
-            range = selectedIndex..selectedIndex
-        }
-
-        range.forEach {
-            val toAdd = chapters[it]
-            if (!selected.contains(toAdd)) {
-                selected.add(toAdd)
-            }
-        }
-        return true
-    }
-    return false
-}
-
 private fun onChapterItemClick(
     chapterItem: ChapterItem,
-    selected: MutableList<ChapterItem>,
     chapters: List<ChapterItem>,
-    selectedPositions: Array<Int>,
+    onToggleSelection: (Boolean) -> Unit,
     onChapterClicked: (Chapter) -> Unit,
 ) {
-    val selectedIndex = chapters.indexOf(chapterItem)
     when {
-        selected.contains(chapterItem) -> {
-            val removedIndex = chapters.indexOf(chapterItem)
-            selected.remove(chapterItem)
-
-            if (removedIndex == selectedPositions[0]) {
-                selectedPositions[0] = chapters.indexOfFirst { selected.contains(it) }
-            } else if (removedIndex == selectedPositions[1]) {
-                selectedPositions[1] = chapters.indexOfLast { selected.contains(it) }
-            }
-        }
-        selected.isNotEmpty() -> {
-            if (selectedIndex < selectedPositions[0]) {
-                selectedPositions[0] = selectedIndex
-            } else if (selectedIndex > selectedPositions[1]) {
-                selectedPositions[1] = selectedIndex
-            }
-            selected.add(chapterItem)
-        }
+        chapterItem.selected -> onToggleSelection(false)
+        chapters.any { it.selected } -> onToggleSelection(true)
         else -> onChapterClicked(chapterItem.chapter)
     }
 }

@@ -72,6 +72,8 @@
     <string name="action_edit_categories">Edit categories</string>
     <string name="action_rename_category">Rename category</string>
     <string name="action_move_category">Set categories</string>
+    <string name="delete_category_confirmation">Do you wish to delete the category \"%s\"?</string>
+    <string name="delete_category">Delete category</string>
     <string name="action_edit_cover">Edit cover</string>
     <string name="action_view_chapters">View chapters</string>
     <string name="action_stop">Stop</string>
@@ -80,6 +82,7 @@
     <string name="action_next_chapter">Next chapter</string>
     <string name="action_retry">Retry</string>
     <string name="action_remove">Remove</string>
+    <string name="action_remove_everything">Remove everything</string>
     <string name="action_start">Start</string>
     <string name="action_resume">Resume</string>
     <string name="action_open_in_browser">Open in browser</string>
@@ -135,6 +138,7 @@
 
     <!-- Operations -->
     <string name="loading">Loading…</string>
+    <string name="internal_error">InternalError: Check crash logs for further information</string>
 
     <!-- Shortcuts-->
     <string name="app_not_available">App not available</string>
@@ -357,6 +361,8 @@
     <string name="scale_type_fit_height">Fit height</string>
     <string name="scale_type_original_size">Original size</string>
     <string name="scale_type_smart_fit">Smart fit</string>
+    <string name="pref_navigate_pan">Navigate to pan</string>
+    <string name="pref_landscape_zoom">Zoom landscape image</string>
     <string name="pref_zoom_start">Zoom start position</string>
     <string name="zoom_start_automatic">Automatic</string>
     <string name="zoom_start_left">Left</string>
@@ -468,6 +474,8 @@
     <string name="label_network">Network</string>
     <string name="pref_clear_cookies">Clear cookies</string>
     <string name="pref_dns_over_https">DNS over HTTPS (DoH)</string>
+    <string name="pref_user_agent_string">Default user agent string</string>
+    <string name="pref_reset_user_agent_string">Reset default user agent string</string>
     <string name="requires_app_restart">Requires app restart to take effect</string>
     <string name="cookies_cleared">Cookies cleared</string>
     <string name="label_data">Data</string>
@@ -713,6 +721,7 @@
     <string name="transition_pages_error">Failed to load pages: %1$s</string>
     <string name="page_list_empty_error">No pages found</string>
     <string name="loader_not_implemented_error">Source not found</string>
+    <string name="loader_rar5_error">RARv5 format is not supported</string>
     <plurals name="missing_chapters_warning">
         <item quantity="one">Skipping %d chapter, either the source is missing it or it has been filtered out</item>
         <item quantity="other">Skipping %d chapters, either the source is missing them or they have been filtered out</item>
@@ -720,6 +729,7 @@
 
     <!-- Updates fragment -->
     <string name="updating_library">Updating library</string>
+    <string name="cant_open_last_read_chapter">Unable to open last read chapter</string>
 
     <!-- History fragment -->
     <string name="recent_manga_time">Ch. %1$s - %2$s</string>
@@ -802,9 +812,6 @@
         <item quantity="other">%d extension updates available</item>
     </plurals>
 
-    <!--Content Description-->
-    <string name="description_cover">Cover of manga</string>
-
     <!-- Information Text -->
     <string name="information_no_downloads">No downloads</string>
     <string name="information_no_recent">No recent updates</string>
@@ -846,12 +853,4 @@
     <!-- S Pen actions -->
     <string name="spen_previous_page">Previous page</string>
     <string name="spen_next_page">Next page</string>
-    <string name="pref_navigate_pan">Navigate to pan</string>
-    <string name="pref_landscape_zoom">Zoom landscape image</string>
-    <string name="cant_open_last_read_chapter">Unable to open last read chapter</string>
-    <string name="delete_category_confirmation">Do you wish to delete the category %s</string>
-    <string name="delete_category">Delete category</string>
-    <string name="yes">Yes</string>
-    <string name="no">No</string>
-    <string name="internal_error">InternalError: Check crash logs for further information</string>
 </resources>

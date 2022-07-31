@@ -2,6 +2,7 @@ package eu.kanade.presentation.category.components.repo
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
@@ -17,12 +18,16 @@ import eu.kanade.presentation.util.horizontalPadding
 
 @Composable
 fun SourceRepoListItem(
+    modifier: Modifier,
     repo: String,
-    onDelete: (String) -> Unit,
+    onDelete: () -> Unit,
 ) {
-    ElevatedCard {
+    ElevatedCard(
+        modifier = modifier,
+    ) {
         Row(
             modifier = Modifier
+                .fillMaxWidth()
                 .padding(start = horizontalPadding, top = horizontalPadding, end = horizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -31,7 +36,7 @@ fun SourceRepoListItem(
         }
         Row {
             Spacer(modifier = Modifier.weight(1f))
-            IconButton(onClick = { onDelete(repo) }) {
+            IconButton(onClick = onDelete) {
                 Icon(imageVector = Icons.Outlined.Delete, contentDescription = "")
             }
         }

@@ -228,7 +228,7 @@ fun ExpandableMangaDescription(
             mutableStateOf(defaultExpandState)
         }
         val desc =
-            description.takeIf { !it.isNullOrBlank() } ?: stringResource(id = R.string.description_placeholder)
+            description.takeIf { !it.isNullOrBlank() } ?: stringResource(R.string.description_placeholder)
         val trimmedDescription = remember(desc) {
             desc
                 .replace(whitespaceLineRegex, "\n")
@@ -322,7 +322,7 @@ private fun MangaAndSourceTitlesLarge(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         MangaCover.Book(
-            modifier = Modifier.fillMaxWidth(0.4f),
+            modifier = Modifier.fillMaxWidth(0.65f),
             data = coverDataProvider(),
             onClick = onCoverClick,
         )

@@ -56,7 +56,7 @@ class PreferencesHelper(val context: Context) {
 
     fun lockAppAfter() = flowPrefs.getInt("lock_app_after", 0)
 
-    fun lastAppUnlock() = flowPrefs.getLong("last_app_unlock", 0)
+    fun lastAppClosed() = flowPrefs.getLong("last_app_closed", 0)
 
     fun secureScreen() = flowPrefs.getEnum("secure_screen_v2", Values.SecureScreenMode.INCOGNITO)
 
@@ -305,6 +305,8 @@ class PreferencesHelper(val context: Context) {
 
     fun dohProvider() = prefs.getInt(Keys.dohProvider, -1)
 
+    fun defaultUserAgent() = flowPrefs.getString(Keys.defaultUserAgent, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.124 Safari/537.36 Edg/102.0.1245.44")
+
     fun lastSearchQuerySearchSettings() = flowPrefs.getString("last_search_query", "")
 
     fun filterChapterByRead() = prefs.getInt(Keys.defaultChapterFilterByRead, DomainManga.SHOW_ALL.toInt())
@@ -514,6 +516,8 @@ class PreferencesHelper(val context: Context) {
     fun showNavHistory() = flowPrefs.getBoolean("pref_show_history_button", true)
 
     fun pageLayout() = flowPrefs.getInt("page_layout", PagerConfig.PageLayout.AUTOMATIC)
+
+    fun centerMarginType() = flowPrefs.getInt("center_margin_type", PagerConfig.CenterMarginType.NONE)
 
     fun invertDoublePages() = flowPrefs.getBoolean("invert_double_pages", false)
 }

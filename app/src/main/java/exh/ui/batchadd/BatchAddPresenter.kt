@@ -3,13 +3,12 @@ package exh.ui.batchadd
 import android.content.Context
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
-import eu.kanade.tachiyomi.ui.base.presenter.BasePresenter
 import eu.kanade.tachiyomi.util.lang.withIOContext
 import exh.GalleryAddEvent
 import exh.GalleryAdder
 import exh.log.xLogE
-import exh.util.dropEmpty
-import exh.util.trimAll
+import exh.ui.base.CoroutinePresenter
+import exh.util.trimOrNull
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -18,7 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import uy.kohesive.injekt.injectLazy
 
-class BatchAddPresenter : BasePresenter<BatchAddController>() {
+class BatchAddPresenter : CoroutinePresenter<BatchAddController>() {
     private val preferences: PreferencesHelper by injectLazy()
 
     private val galleryAdder by lazy { GalleryAdder() }
@@ -30,25 +29,21 @@ class BatchAddPresenter : BasePresenter<BatchAddController>() {
 
     fun addGalleries(context: Context, galleries: String) {
         eventFlow = MutableSharedFlow(1)
-        val regex =
-            """[0-9]*?\.[a-z0-9]*?:""".toRegex()
 
-        val testedGalleries = if (regex.containsMatchIn(galleries)) {
+        val splitGalleries = if (ehVisitedRegex.containsMatchIn(galleries)) {
             val url = if (preferences.enableExhentai().get()) {
                 "https://exhentai.org/g/"
             } else {
                 "https://e-hentai.org/g/"
             }
-            regex.findAll(galleries).map { galleryKeys ->
+            ehVisitedRegex.findAll(galleries).map { galleryKeys ->
                 val linkParts = galleryKeys.value.split(".")
                 url + linkParts[0] + "/" + linkParts[1].replace(":", "")
-            }.joinToString(separator = "\n")
+            }.toList()
         } else {
-            galleries
+            galleries.split("\n")
+                .mapNotNull(String::trimOrNull)
         }
-        val splitGalleries = testedGalleries.split("\n")
-            .trimAll()
-            .dropEmpty()
 
         progressFlow.value = 0
         progressTotalFlow.value = splitGalleries.size
@@ -92,5 +87,7 @@ class BatchAddPresenter : BasePresenter<BatchAddController>() {
         const val STATE_IDLE = 0
         const val STATE_INPUT_TO_PROGRESS = 1
         const val STATE_PROGRESS_TO_INPUT = 2
+
+        val ehVisitedRegex = """[0-9]*?\.[a-z0-9]*?:""".toRegex()
     }
 }

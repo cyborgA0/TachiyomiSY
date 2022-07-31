@@ -18,6 +18,7 @@ import eu.kanade.data.listOfStringsAdapter
 import eu.kanade.data.listOfStringsAndAdapter
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.cache.CoverCache
+import eu.kanade.tachiyomi.data.cache.PagePreviewCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.library.CustomMangaManager
 import eu.kanade.tachiyomi.data.preference.PreferencesHelper
@@ -46,7 +47,7 @@ class AppModule(val app: Application) : InjektModule {
                 schema = Database.Schema,
                 context = app,
                 name = "tachiyomi.db",
-                factory = if (BuildConfig.DEBUG && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                factory = if (BuildConfig.DEBUG && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     // Support database inspector in Android Studio
                     FrameworkSQLiteOpenHelperFactory()
                 } else {
@@ -100,9 +101,9 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { NetworkHelper(app) }
 
-        addSingletonFactory { SourceManager(app).also { get<ExtensionManager>().init(it) } }
-
         addSingletonFactory { ExtensionManager(app) }
+
+        addSingletonFactory { SourceManager(app, get(), get()) }
 
         addSingletonFactory { DownloadManager(app) }
 
@@ -116,6 +117,8 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { CustomMangaManager(app) }
 
         addSingletonFactory { EHentaiUpdateHelper(app) }
+
+        addSingletonFactory { PagePreviewCache(app) }
         // SY <--
 
         // Asynchronously init expensive components for a faster cold start

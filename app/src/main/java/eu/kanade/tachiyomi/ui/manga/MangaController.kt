@@ -27,7 +27,7 @@ import eu.kanade.data.chapter.NoChaptersException
 import eu.kanade.domain.category.model.Category
 import eu.kanade.domain.manga.model.Manga
 import eu.kanade.domain.manga.model.toDbManga
-import eu.kanade.presentation.manga.ChapterDownloadAction
+import eu.kanade.presentation.components.ChapterDownloadAction
 import eu.kanade.presentation.manga.DownloadAction
 import eu.kanade.presentation.manga.MangaScreen
 import eu.kanade.presentation.util.calculateWindowWidthSizeClass
@@ -74,6 +74,7 @@ import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.widget.materialdialogs.QuadStateTextView
 import eu.kanade.tachiyomi.widget.materialdialogs.await
 import exh.md.similar.MangaDexSimilarController
+import exh.pagepreview.PagePreviewController
 import exh.recs.RecommendsController
 import exh.source.MERGED_SOURCE_ID
 import exh.source.getMainSource
@@ -191,11 +192,15 @@ class MangaController :
                 onMergedSettingsClicked = this::openMergedSettingsDialog,
                 onMergeClicked = this::openSmartSearch,
                 onMergeWithAnotherClicked = this::mergeWithAnother,
+                onMorePreviewsClicked = this::openMorePagePreviews,
                 // SY <--
                 onMultiBookmarkClicked = presenter::bookmarkChapters,
                 onMultiMarkAsReadClicked = presenter::markChaptersRead,
                 onMarkPreviousAsReadClicked = presenter::markPreviousChapterRead,
                 onMultiDeleteClicked = this::deleteChaptersWithConfirmation,
+                onChapterSelected = presenter::toggleSelection,
+                onAllChapterSelected = presenter::toggleAllSelection,
+                onInvertSelection = presenter::invertSelection,
             )
         } else {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -338,12 +343,19 @@ class MangaController :
         }
     }
 
+    // SY -->
+    private fun openMorePagePreviews() {
+        val manga = presenter.manga ?: return
+        router.pushController(PagePreviewController(manga.id))
+    }
+    // SY <--
+
     // EXH -->
-    fun openSmartSearch() {
+    private fun openSmartSearch() {
         val manga = presenter.manga ?: return
         val smartSearchConfig = SourcesController.SmartSearchConfig(manga.title, manga.id)
 
-        router?.pushController(
+        router.pushController(
             SourcesController(
                 bundleOf(
                     SourcesController.SMART_SEARCH_CONFIG to smartSearchConfig,

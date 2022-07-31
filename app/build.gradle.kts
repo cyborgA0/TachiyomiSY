@@ -27,7 +27,7 @@ android {
         applicationId = "eu.kanade.tachiyomi.sy"
         minSdk = AndroidConfig.minSdk
         targetSdk = AndroidConfig.targetSdk
-        versionCode = 35
+        versionCode = 36
         versionName = "1.8.4"
 
         buildConfigField("String", "COMMIT_COUNT", "\"${getCommitCount()}\"")
@@ -144,6 +144,8 @@ dependencies {
     implementation(compose.accompanist.webview)
     implementation(compose.accompanist.swiperefresh)
     implementation(compose.accompanist.flowlayout)
+    implementation(compose.accompanist.pager.core)
+    implementation(compose.accompanist.pager.indicators)
 
     implementation(androidx.paging.runtime)
     implementation(androidx.paging.compose)
@@ -169,7 +171,6 @@ dependencies {
     implementation(androidx.corektx)
     implementation(androidx.splashscreen)
     implementation(androidx.recyclerview)
-    implementation(androidx.swiperefreshlayout)
     implementation(androidx.viewpager)
 
     implementation(androidx.bundles.lifecycle)
@@ -295,19 +296,14 @@ tasks {
     // See https://kotlinlang.org/docs/reference/experimental.html#experimental-status-of-experimental-api(-markers)
     withType<KotlinCompile> {
         kotlinOptions.freeCompilerArgs += listOf(
-            "-opt-in=kotlin.Experimental",
-            "-opt-in=kotlin.RequiresOptIn",
-            "-opt-in=kotlin.ExperimentalStdlibApi",
-            "-opt-in=kotlinx.coroutines.FlowPreview",
-            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
             "-opt-in=kotlinx.coroutines.InternalCoroutinesApi",
-            "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
             "-opt-in=coil.annotation.ExperimentalCoilApi",
             "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
             "-opt-in=androidx.compose.ui.ExperimentalComposeUiApi",
             "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
             "-opt-in=androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi",
             "-opt-in=androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi",
+            "-opt-in=com.google.accompanist.pager.ExperimentalPagerApi",
         )
     }
 

@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.source.model.MetadataMangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.toChapterInfo
 import eu.kanade.tachiyomi.source.online.BrowseSourceFilterHeader
 import eu.kanade.tachiyomi.source.online.FollowsSource
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -122,16 +123,16 @@ class MangaDex(delegate: HttpSource, val context: Context) :
         MangaPlusHandler(network.client)
     }
     private val comikeyHandler by lazy {
-        ComikeyHandler(network.cloudflareClient)
+        ComikeyHandler(network.cloudflareClient, network.defaultUserAgent)
     }
     private val bilibiliHandler by lazy {
         BilibiliHandler(network.cloudflareClient)
     }
     private val azukHandler by lazy {
-        AzukiHandler(network.client)
+        AzukiHandler(network.client, network.defaultUserAgent)
     }
     private val mangaHotHandler by lazy {
-        MangaHotHandler(network.client)
+        MangaHotHandler(network.client, network.defaultUserAgent)
     }
     private val pageHandler by lazy {
         PageHandler(
@@ -198,7 +199,7 @@ class MangaDex(delegate: HttpSource, val context: Context) :
     }
 
     override fun fetchPageList(chapter: SChapter): Observable<List<Page>> {
-        return runAsObservable { pageHandler.fetchPageList(chapter, isLogged(), usePort443Only(), dataSaver(), delegate) }
+        return runAsObservable { pageHandler.fetchPageList(chapter.toChapterInfo(), isLogged(), usePort443Only(), dataSaver(), delegate) }
     }
 
     override fun fetchImage(page: Page): Observable<Response> {
